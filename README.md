@@ -5,7 +5,7 @@ A clean and robust WordPress task scheduling library built on top of Action Sche
 ## Features
 
 - **Simple API**: Clean interface for scheduling tasks
-- **Uniqueness Checking**: Prevents duplicate task creation based on hook and arguments
+- **Flexible Uniqueness**: Multiple uniqueness levels (hook, group, args, or none)
 - **Error Handling**: Comprehensive error handling with WP_Error objects
 - **Flexible Configuration**: Customizable hook prefixes, groups, and logging
 - **Task Management**: Cancel, query, and manage scheduled tasks
@@ -57,7 +57,7 @@ Task_Scheduler::configure(
 #### One-time Tasks
 
 ```php
-// Schedule a simple task.
+// Schedule a simple task (no uniqueness check by default).
 $task_id = Task_Scheduler::add_task(
     'process_item',
     60,                    // 60 second delay.
@@ -65,36 +65,71 @@ $task_id = Task_Scheduler::add_task(
     'my_group'             // Optional group.
 );
 
-// Schedule without uniqueness check.
+// Schedule with hook-only uniqueness.
 $task_id = Task_Scheduler::add_task(
-    'process_item',
-    60,
-    ['item_id' => 123],
-    'my_group',
+    'send_notification',
+    0,
+    ['user_id' => 123],
+    'notifications',
     null,                  // Priority (optional).
-    false                  // Disable uniqueness check.
+    Task_Scheduler::UNIQUE_HOOK  // Only one task with this hook.
+);
+
+// Schedule with group uniqueness.
+$task_id = Task_Scheduler::add_task(
+    'backup_site',
+    3600,
+    ['site_id' => 123],
+    'site_123',
+    null,
+    Task_Scheduler::UNIQUE_GROUP  // Only one task per group.
+);
+
+// Schedule with full uniqueness (hook + group + args).
+$task_id = Task_Scheduler::add_task(
+    'sync_data',
+    0,
+    ['user_id' => 123, 'type' => 'profile'],
+    'data_sync',
+    null,
+    Task_Scheduler::UNIQUE_ARGS  // Only one task with exact same parameters.
 );
 ```
 
 #### Recurring Tasks
 
 ```php
-// Schedule a recurring task.
+// Schedule a recurring task (no uniqueness check by default).
 $task_id = Task_Scheduler::add_repeating_task(
     'cleanup_data',
     3600,                  // Run every hour.
     ['type' => 'temp'],    // Arguments.
-0,                     // No initial delay.
-'maintenance'          // Group.
+    0,                     // No initial delay.
+    'maintenance'          // Group.
 );
 
-// Schedule unique recurring task.
-$task_id = Task_Scheduler::add_unique_repeating_task_by_args(
+// Schedule unique recurring task with hook-only uniqueness.
+$task_id = Task_Scheduler::add_repeating_task(
+    'daily_backup',
+    86400,                 // Run every day.
+    ['backup_type' => 'full'],
+    0,
+    'backups',
+    null,                  // Priority (optional).
+    null,                  // Max runs (optional).
+    Task_Scheduler::UNIQUE_HOOK  // Only one daily backup task.
+);
+
+// Schedule unique recurring task with full uniqueness.
+$task_id = Task_Scheduler::add_repeating_task(
     'sync_data',
     1800,                  // Run every 30 minutes.
     ['source' => 'api'],   // Arguments.
-0,                     // No initial delay.
-'sync'                 // Group.
+    0,                     // No initial delay.
+    'sync',                // Group.
+    null,                  // Priority (optional).
+    null,                  // Max runs (optional).
+    Task_Scheduler::UNIQUE_ARGS  // Only one specific sync task.
 );
 ```
 
@@ -177,10 +212,10 @@ if (is_wp_error($result)) {
 
 ### Task Scheduling Methods
 
-- `add_task(string $hook, int $delay, array $args, string $group, int|null $priority, bool $unique)`: Add one-time task
-- `add_repeating_task(string $hook, int $interval, array $args, int $delay, string $group, int|null $priority, int|null $max_runs)`: Add recurring task
-- `add_unique_task_by_args(string $hook, int $delay, array $args, string $group, int|null $priority)`: Add unique one-time task
-- `add_unique_repeating_task_by_args(string $hook, int $interval, array $args, int $delay, string $group, int|null $priority, int|null $max_runs)`: Add unique recurring task
+- `add_task(string $hook, int $delay, array $args, string $group, int|null $priority, string $unique)`: Add one-time task
+- `add_repeating_task(string $hook, int $interval, array $args, int $delay, string $group, int|null $priority, int|null $max_runs, string $unique)`: Add recurring task
+- `add_unique_task(string $hook, int $delay, array $args, string $group, int|null $priority, string $unique)`: Add unique one-time task
+- `add_unique_repeating_task(string $hook, int $interval, array $args, int $delay, string $group, int|null $priority, int|null $max_runs, string $unique)`: Add unique recurring task
 
 ### Task Management Methods
 
@@ -195,12 +230,47 @@ if (is_wp_error($result)) {
 
 - `is_available()`: Check if Action Scheduler is available
 
-## Uniqueness Implementation
+## Uniqueness Levels
 
-The library implements uniqueness checking based on:
-- Hook name (with prefix)
-- Arguments array
-- Task status (pending or running)
+The library provides flexible uniqueness checking with four levels:
+
+### Uniqueness Constants
+
+- `Task_Scheduler::UNIQUE_NONE` - No uniqueness check (default)
+- `Task_Scheduler::UNIQUE_HOOK` - Unique by hook only
+- `Task_Scheduler::UNIQUE_GROUP` - Unique by hook + group
+- `Task_Scheduler::UNIQUE_ARGS` - Unique by hook + group + args
+
+### Default Behavior
+
+By default, the library uses `UNIQUE_NONE`, which means:
+- Multiple identical tasks can be scheduled
+- No uniqueness checks are performed
+- Better performance for high-frequency tasks
+- Follows Action Scheduler's default behavior
+
+### When to Use Each Level
+
+- **UNIQUE_NONE**: Logging, monitoring, queue processing, testing
+- **UNIQUE_HOOK**: Global system tasks, maintenance operations
+- **UNIQUE_GROUP**: Per-site, per-user, or per-tenant operations
+- **UNIQUE_ARGS**: Specific operations with exact parameters
+
+### Example Use Cases
+
+```php
+// Allow multiple identical tasks (default)
+Task_Scheduler::add_task('log_event', 0, ['event' => 'user_login']);
+
+// Only one global maintenance task
+Task_Scheduler::add_task('system_maintenance', 0, [], 'maintenance', null, Task_Scheduler::UNIQUE_HOOK);
+
+// Only one backup per site
+Task_Scheduler::add_task('backup_site', 3600, ['site_id' => 123], 'site_123', null, Task_Scheduler::UNIQUE_GROUP);
+
+// Only one specific sync operation
+Task_Scheduler::add_task('sync_user', 0, ['user_id' => 456, 'type' => 'profile'], 'sync', null, Task_Scheduler::UNIQUE_ARGS);
+```
 
 When a duplicate task is detected, the existing task ID is returned instead of creating a new one. This prevents:
 - Duplicate processing
@@ -225,7 +295,7 @@ Common error codes returned by the library:
 1. **Always check for errors**: Use `is_wp_error()` to check return values
 2. **Use meaningful hook names**: Make hook names descriptive and unique
 3. **Group related tasks**: Use groups to organize and manage related tasks
-4. **Handle uniqueness appropriately**: Enable uniqueness for critical tasks, disable for logging/monitoring
+4. **Choose appropriate uniqueness level**: Use UNIQUE_NONE for logging/monitoring, UNIQUE_ARGS for critical tasks
 5. **Monitor task execution**: Use the query methods to monitor task status
 6. **Clean up old tasks**: Regularly clear completed or failed tasks
 
