@@ -610,10 +610,19 @@ class Task_Scheduler {
 
 			$actions = as_get_scheduled_actions( $query_args, ARRAY_A );
 
-			// Check if any of the actions are recurring.
+			// Check if any of the actions are recurring by examining the schedule object.
 			foreach ( $actions as $action ) {
-				if ( isset( $action['schedule'] ) && ! empty( $action['schedule'] ) ) {
-					return true;
+				if ( isset( $action['schedule'] ) && is_object( $action['schedule'] ) ) {
+					// Check if the schedule is a recurring schedule.
+					$schedule_name = method_exists( $action['schedule'], 'get_name' ) ? $action['schedule']->get_name() : '';
+					if ( in_array( $schedule_name, [ 'recurring', 'cron' ], true ) ) {
+						return true;
+					}
+
+					// Also check for interval-based recurring schedules.
+					if ( method_exists( $action['schedule'], 'get_interval' ) && $action['schedule']->get_interval() > 0 ) {
+						return true;
+					}
 				}
 			}
 
@@ -623,6 +632,115 @@ class Task_Scheduler {
 			error_log( self::$log_prefix . ': Error checking scheduled recurring task: ' . $e->getMessage() );
 			return false;
 		}
+	}
+
+	/**
+	 * Get tasks by hook name.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $hook Action hook name (without prefix).
+	 * @param string $group Action group (optional).
+	 * @param string $status Task status filter (default: 'pending').
+	 * @return array|WP_Error Array of tasks or WP_Error on failure.
+	 */
+	public static function get_tasks_by_hook( string $hook, string $group = '', string $status = 'pending' ) {
+		// Check if Action Scheduler is available.
+		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+			return new WP_Error( 'action_scheduler_not_available', 'Action Scheduler is not available.' );
+		}
+
+		// Sanitize hook name.
+		$hook = sanitize_key( $hook );
+
+		// Add prefix to hook if not already present.
+		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+
+		// Sanitize group name.
+		$group = sanitize_key( $group );
+
+		return self::execute_with_error_handling(
+			function () use ( $full_hook, $group, $status ) {
+				$query_args = [
+					'hook'   => $full_hook,
+					'status' => $status,
+				];
+
+				// Add group filter if specified.
+				if ( ! empty( $group ) ) {
+					$query_args['group'] = $group;
+				}
+
+				$actions = as_get_scheduled_actions( $query_args, ARRAY_A );
+
+				$result = [];
+				foreach ( $actions as $action_id => $action ) {
+					$task_data = [
+						'id'        => $action_id,
+						'hook'      => $action['hook'] ?? '',
+						'args'      => $action['args'] ?? [],
+						'group'     => $action['group'] ?? '',
+						'status'    => $action['status'] ?? '',
+						'schedule'  => $action['schedule'] ?? null,
+						'recurring' => false,
+						'next_run'  => null,
+					];
+
+					// Determine if this is a recurring task.
+					if ( isset( $action['schedule'] ) && is_object( $action['schedule'] ) ) {
+						$schedule_name = method_exists( $action['schedule'], 'get_name' ) ? $action['schedule']->get_name() : '';
+						if ( in_array( $schedule_name, [ 'recurring', 'cron' ], true ) ) {
+							$task_data['recurring'] = true;
+						} elseif ( method_exists( $action['schedule'], 'get_interval' ) && $action['schedule']->get_interval() > 0 ) {
+							$task_data['recurring'] = true;
+						}
+
+						// Get next run time if available.
+						if ( method_exists( $action['schedule'], 'get_next' ) ) {
+							$next_run = $action['schedule']->get_next();
+							if ( $next_run instanceof \DateTime ) {
+								$task_data['next_run'] = $next_run->getTimestamp();
+							}
+						}
+					}
+
+					$result[] = $task_data;
+				}
+
+				return $result;
+			},
+			'Error getting tasks by hook: ',
+			'Failed to get tasks by hook.'
+		);
+	}
+
+	/**
+	 * Delete a specific task by ID.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int $action_id Action ID to delete.
+	 * @return bool|WP_Error True on success, WP_Error on failure.
+	 */
+	public static function delete_task( int $action_id ) {
+		// Check if Action Scheduler is available.
+		if ( ! function_exists( 'as_unschedule_action' ) ) {
+			return new WP_Error( 'action_scheduler_not_available', 'Action Scheduler is not available.' );
+		}
+
+		return self::execute_with_error_handling(
+			function () use ( $action_id ) {
+				$deleted = as_unschedule_action( $action_id );
+
+				if ( $deleted ) {
+					return true;
+				}
+
+				return new WP_Error( 'delete_failed', 'Failed to delete task. Task may not exist or already be completed.' );
+			},
+			'Error deleting task: ',
+			'Failed to delete task.'
+		);
 	}
 
 	/**
