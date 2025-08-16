@@ -13,9 +13,9 @@ A clean and robust WordPress task scheduling library built on top of Action Sche
 
 ## Requirements
 
-- WordPress 5.0+
+- WordPress 6.0+
 - PHP 7.4+
-- Action Scheduler (usually included with WooCommerce or available as standalone)
+- Action Scheduler
 
 ## Installation
 
@@ -235,4 +235,4 @@ Contributions are welcome! Please ensure your code follows WordPress coding stan
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the [MIT](https://opensource.org/license/MIT).
