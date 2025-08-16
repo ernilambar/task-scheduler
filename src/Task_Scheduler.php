@@ -600,7 +600,6 @@ class Task_Scheduler {
 		try {
 			$query_args = [
 				'hook'   => $full_hook,
-				'status' => $status,
 			];
 
 			// Add group filter if specified.
@@ -608,20 +607,57 @@ class Task_Scheduler {
 				$query_args['group'] = $group;
 			}
 
-			$actions = as_get_scheduled_actions( $query_args, ARRAY_A );
+			// Check multiple statuses to be more thorough.
+			$statuses_to_check = [ 'pending', 'running', 'in-progress' ];
 
-			// Check if any of the actions are recurring by examining the schedule object.
-			foreach ( $actions as $action ) {
-				if ( isset( $action['schedule'] ) && is_object( $action['schedule'] ) ) {
-					// Check if the schedule is a recurring schedule.
-					$schedule_name = method_exists( $action['schedule'], 'get_name' ) ? $action['schedule']->get_name() : '';
-					if ( in_array( $schedule_name, [ 'recurring', 'cron' ], true ) ) {
-						return true;
-					}
+			foreach ( $statuses_to_check as $check_status ) {
+				$query_args['status'] = $check_status;
 
-					// Also check for interval-based recurring schedules.
-					if ( method_exists( $action['schedule'], 'get_interval' ) && $action['schedule']->get_interval() > 0 ) {
-						return true;
+				// Get action IDs for this status.
+				$action_ids = as_get_scheduled_actions( $query_args, 'ids' );
+
+				// Check each action individually using ActionScheduler store.
+				if ( class_exists( '\ActionScheduler' ) ) {
+					$store = \ActionScheduler::store();
+
+					foreach ( $action_ids as $action_id ) {
+						try {
+							$action = $store->fetch_action( $action_id );
+							if ( $action ) {
+								$schedule = $action->get_schedule();
+								if ( $schedule ) {
+									$schedule_name = method_exists( $schedule, 'get_name' ) ? $schedule->get_name() : '';
+									$interval = method_exists( $schedule, 'get_interval' ) ? $schedule->get_interval() : 0;
+
+									// Check if this is a recurring schedule.
+									$is_recurring = false;
+
+									// Check by schedule name.
+									if ( in_array( $schedule_name, [ 'recurring', 'cron' ], true ) ) {
+										$is_recurring = true;
+									}
+									// Check by interval.
+									elseif ( $interval > 0 ) {
+										$is_recurring = true;
+									}
+									// Check by class name for ActionScheduler_IntervalSchedule.
+									elseif ( get_class( $schedule ) === 'ActionScheduler_IntervalSchedule' ) {
+										$is_recurring = true;
+									}
+									// Check by class name for other recurring schedule types.
+									elseif ( in_array( get_class( $schedule ), [ 'ActionScheduler_IntervalSchedule', 'ActionScheduler_CronSchedule', 'ActionScheduler_RecurringAction' ], true ) ) {
+										$is_recurring = true;
+									}
+
+									if ( $is_recurring ) {
+										return true;
+									}
+								}
+							}
+						} catch ( Exception $e ) {
+							// Log the error for debugging.
+							error_log( self::$log_prefix . ': Error fetching action ' . $action_id . ': ' . $e->getMessage() );
+						}
 					}
 				}
 			}
