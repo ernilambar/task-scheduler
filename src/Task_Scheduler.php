@@ -288,13 +288,14 @@ class Task_Scheduler {
 
 		return self::execute_with_error_handling(
 			function () use ( $action_id ) {
-				$action = ActionScheduler::store()->fetch_action( $action_id );
+				$store  = \ActionScheduler::store();
+				$status = $store->get_status( $action_id );
 
-				if ( ! $action ) {
+				if ( false === $status ) {
 					return new WP_Error( 'task_not_found', 'Task not found.' );
 				}
 
-				return $action->get_status();
+				return $status;
 			},
 			'Error getting task status: ',
 			'Failed to get task status.'
@@ -599,7 +600,7 @@ class Task_Scheduler {
 
 		try {
 			$query_args = [
-				'hook'   => $full_hook,
+				'hook' => $full_hook,
 			];
 
 			// Add group filter if specified.
@@ -627,7 +628,7 @@ class Task_Scheduler {
 								$schedule = $action->get_schedule();
 								if ( $schedule ) {
 									$schedule_name = method_exists( $schedule, 'get_name' ) ? $schedule->get_name() : '';
-									$interval = method_exists( $schedule, 'get_interval' ) ? $schedule->get_interval() : 0;
+									$interval      = method_exists( $schedule, 'get_interval' ) ? $schedule->get_interval() : 0;
 
 									// Check if this is a recurring schedule.
 									$is_recurring = false;
@@ -635,17 +636,14 @@ class Task_Scheduler {
 									// Check by schedule name.
 									if ( in_array( $schedule_name, [ 'recurring', 'cron' ], true ) ) {
 										$is_recurring = true;
-									}
-									// Check by interval.
-									elseif ( $interval > 0 ) {
+									} elseif ( $interval > 0 ) {
+										// Check by interval.
 										$is_recurring = true;
-									}
-									// Check by class name for ActionScheduler_IntervalSchedule.
-									elseif ( get_class( $schedule ) === 'ActionScheduler_IntervalSchedule' ) {
+									} elseif ( get_class( $schedule ) === 'ActionScheduler_IntervalSchedule' ) {
+										// Check by class name for ActionScheduler_IntervalSchedule.
 										$is_recurring = true;
-									}
-									// Check by class name for other recurring schedule types.
-									elseif ( in_array( get_class( $schedule ), [ 'ActionScheduler_IntervalSchedule', 'ActionScheduler_CronSchedule', 'ActionScheduler_RecurringAction' ], true ) ) {
+									} elseif ( in_array( get_class( $schedule ), [ 'ActionScheduler_IntervalSchedule', 'ActionScheduler_CronSchedule', 'ActionScheduler_RecurringAction' ], true ) ) {
+										// Check by class name for other recurring schedule types.
 										$is_recurring = true;
 									}
 
