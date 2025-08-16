@@ -1,48 +1,52 @@
-# Wordpress - ignore core, configuration, examples, uploads and logs.
-# https://github.com/github/gitignore/blob/main/WordPress.gitignore
+# Operating System files
+*~
+._*
+.DS_Store
+Thumbs.db
+Desktop.ini
+.Spotlight-V100
+.Trashes
 
-# Core
-#
-# Note: if you want to stage/commit WP core files
-# you can delete this whole section/until Configuration.
-/wp-admin/
-/wp-content/index.php
-/wp-content/languages
-/wp-content/plugins/index.php
-/wp-content/themes/index.php
-/wp-includes/
-/index.php
-/license.txt
-/readme.html
-/wp-*.php
-/xmlrpc.php
+# IDE files
+.idea
+.vscode/*
+project.xml
+project.properties
+.project
+.settings*
+*.sublime-project
+*.sublime-workspace
+.sublimelinterrc
+nbproject/private/
+tmp/
 
-# Configuration
-wp-config.php
+# Environment files
+.env
 
-# Example themes
-/wp-content/themes/twenty*/
+wp-cli.local.yml
+yarn-error.log
+npm-debug.log
+.pnpm-debug.log
 
-# Example plugin
-/wp-content/plugins/hello.php
-
-# Uploads
-/wp-content/uploads/
-
-# Log files
+# Ignored extensions
+*~
+*.diff
+*.err
 *.log
+*.map
+*.orig
+*.pyc
+*.rej
+*.sass-cache
+*.sw?
+*.vi
+*.zip
 
-# htaccess
-/.htaccess
+# Sass
+.sass-cache/
 
-# All plugins
-#
-# Note: If you wish to whitelist plugins,
-# uncomment the next line
-#/wp-content/plugins
-
-# All themes
-#
-# Note: If you wish to whitelist themes,
-# uncomment the next line
-#/wp-content/themes
+# Project folders
+/build/
+/deploy/
+/node_modules/
+/vendor/
