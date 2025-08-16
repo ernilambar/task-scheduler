@@ -885,11 +885,32 @@ class Task_Scheduler {
 				}
 
 				// Check for existing actions based on uniqueness level.
-				$existing_actions = as_get_scheduled_actions( $query_args, 'ids' );
+				$existing_actions = as_get_scheduled_actions( $query_args, ARRAY_A );
+
+				// Filter actions by type (recurring vs non-recurring) to avoid false duplicates.
+				$matching_actions = [];
+				foreach ( $existing_actions as $action_id => $action ) {
+					$is_recurring = false;
+
+					// Check if this action is recurring.
+					if ( isset( $action['schedule'] ) && is_object( $action['schedule'] ) ) {
+						$schedule_name = method_exists( $action['schedule'], 'get_name' ) ? $action['schedule']->get_name() : '';
+						if ( in_array( $schedule_name, [ 'recurring', 'cron' ], true ) ) {
+							$is_recurring = true;
+						} elseif ( method_exists( $action['schedule'], 'get_interval' ) && $action['schedule']->get_interval() > 0 ) {
+							$is_recurring = true;
+						}
+					}
+
+					// Only consider actions of the same type (recurring vs non-recurring).
+					if ( ( 'recurring' === $type && $is_recurring ) || ( 'single' === $type && ! $is_recurring ) ) {
+						$matching_actions[] = $action_id;
+					}
+				}
 
 				// Return existing action ID if found.
-				if ( ! empty( $existing_actions ) ) {
-					$existing_id     = $existing_actions[0];
+				if ( ! empty( $matching_actions ) ) {
+					$existing_id     = $matching_actions[0];
 					$action_type     = 'recurring' === $type ? 'recurring action' : 'action';
 					$uniqueness_desc = self::get_uniqueness_description( $unique, $full_hook, $group, $args );
 					error_log( sprintf( self::$log_prefix . ': Duplicate %s detected (%s). Returning existing action ID: %d', $action_type, $uniqueness_desc, $existing_id ) );
