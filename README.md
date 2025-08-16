@@ -164,6 +164,15 @@ $tasks = Task_Scheduler::get_tasks_by_args('process_item', ['item_id' => 123]);
 
 // Find specific task.
 $task = Task_Scheduler::get_task_by_hook_and_args('process_item', ['item_id' => 123]);
+
+// Check if a task exists.
+$exists = Task_Scheduler::has_scheduled_task('process_item', 'my_group');
+
+// Check if a recurring task exists.
+$recurring_exists = Task_Scheduler::has_scheduled_recurring_task('daily_backup', 'backups');
+
+// Get count of tasks.
+$count = Task_Scheduler::get_task_count('process_item', ['item_id' => 123], 'my_group');
 ```
 
 #### Clear Tasks
@@ -224,6 +233,9 @@ if (is_wp_error($result)) {
 - `get_tasks_by_group(string $group, string $status, int $limit)`: Get tasks by group
 - `get_tasks_by_args(string $hook, array $args, string $group, string $status)`: Get tasks by arguments
 - `get_task_by_hook_and_args(string $hook, array $args, string $group)`: Find specific task
+- `has_scheduled_task(string $hook, string $group, string $status)`: Check if a task exists
+- `has_scheduled_recurring_task(string $hook, string $group, string $status)`: Check if a recurring task exists
+- `get_task_count(string $hook, array $args, string $group, string $status)`: Get count of tasks
 - `clear_group_tasks(string $group)`: Clear all tasks in a group
 
 ### Utility Methods
