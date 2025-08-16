@@ -11,6 +11,7 @@ namespace Nilambar\Task_Scheduler;
 
 use WP_Error;
 use Exception;
+use ActionScheduler;
 
 /**
  * Class Task_Scheduler.
@@ -54,6 +55,198 @@ class Task_Scheduler {
 	 * @var string
 	 */
 	private static string $log_prefix = 'Queue';
+
+	/**
+	 * Initialization status.
+	 *
+	 * @since 1.0.0
+	 * @var bool|null
+	 */
+	private static ?bool $initialized = null;
+
+	/**
+	 * Initialize Action Scheduler if not already done.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return bool True if Action Scheduler is ready, false otherwise.
+	 */
+	private static function ensure_action_scheduler_ready(): bool {
+		// Check if already initialized.
+		if ( null !== self::$initialized ) {
+			return self::$initialized;
+		}
+
+		// Check WordPress context.
+		if ( ! defined( 'ABSPATH' ) ) {
+			self::$initialized = false;
+			error_log( self::$log_prefix . ': WordPress context not available.' );
+			return false;
+		}
+
+		// Check if Action Scheduler is already loaded and initialized.
+		if ( class_exists( 'ActionScheduler' ) && ActionScheduler::is_initialized() ) {
+			self::$initialized = true;
+			return true;
+		}
+
+		// Try to load Action Scheduler from our vendor directory.
+		if ( ! self::load_action_scheduler() ) {
+			self::$initialized = false;
+			return false;
+		}
+
+		// Initialize Action Scheduler.
+		if ( ! self::initialize_action_scheduler() ) {
+			self::$initialized = false;
+			return false;
+		}
+
+		// Verify database tables exist.
+		if ( ! self::verify_database_tables() ) {
+			self::$initialized = false;
+			return false;
+		}
+
+		self::$initialized = true;
+		return true;
+	}
+
+	/**
+	 * Load Action Scheduler from vendor directory.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return bool True if loaded successfully, false otherwise.
+	 */
+	private static function load_action_scheduler(): bool {
+		// Check if Action Scheduler is already loaded.
+		if ( class_exists( 'ActionScheduler' ) ) {
+			return true;
+		}
+
+		// Load from our vendor directory.
+		$action_scheduler_path = __DIR__ . '/../../vendor/woocommerce/action-scheduler/action-scheduler.php';
+
+		if ( file_exists( $action_scheduler_path ) ) {
+			require_once $action_scheduler_path;
+
+			if ( class_exists( 'ActionScheduler' ) ) {
+				return true;
+			}
+		}
+
+		error_log( self::$log_prefix . ': Action Scheduler could not be loaded from vendor directory.' );
+		return false;
+	}
+
+	/**
+	 * Initialize Action Scheduler.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return bool True if initialized successfully, false otherwise.
+	 */
+	private static function initialize_action_scheduler(): bool {
+		if ( ! class_exists( 'ActionScheduler' ) ) {
+			error_log( self::$log_prefix . ': ActionScheduler class not found.' );
+			return false;
+		}
+
+				// Check if already initialized.
+		if ( ActionScheduler::is_initialized() ) {
+			return true;
+		}
+
+		try {
+			// Initialize Action Scheduler.
+			ActionScheduler::init( __FILE__ );
+
+			if ( ActionScheduler::is_initialized() ) {
+				return true;
+			}
+		} catch ( Exception $e ) {
+			error_log( self::$log_prefix . ': Failed to initialize Action Scheduler: ' . $e->getMessage() );
+		}
+
+		return false;
+	}
+
+	/**
+	 * Verify Action Scheduler database tables exist.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return bool True if tables exist, false otherwise.
+	 */
+	private static function verify_database_tables(): bool {
+		global $wpdb;
+
+		if ( ! $wpdb ) {
+			error_log( self::$log_prefix . ': WordPress database not available.' );
+			return false;
+		}
+
+		$table_name   = $wpdb->prefix . 'actionscheduler_actions';
+		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) === $table_name;
+
+		if ( ! $table_exists ) {
+			error_log( self::$log_prefix . ': Action Scheduler database tables not found.' );
+		}
+
+		return $table_exists;
+	}
+
+	/**
+	 * Validate Action Scheduler availability with detailed error messages.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return true|WP_Error True if available, WP_Error with details if not.
+	 */
+	private static function validate_action_scheduler_available() {
+		if ( ! defined( 'ABSPATH' ) ) {
+			return new WP_Error(
+				'wordpress_not_loaded',
+				'WordPress is not loaded. Task Scheduler requires WordPress context.'
+			);
+		}
+
+		if ( ! self::ensure_action_scheduler_ready() ) {
+			// Provide specific error messages based on what's missing.
+			if ( ! class_exists( 'ActionScheduler' ) ) {
+				return new WP_Error(
+					'action_scheduler_not_loaded',
+					'Action Scheduler could not be loaded. Please ensure the woocommerce/action-scheduler package is installed via Composer.'
+				);
+			}
+
+			if ( ! ActionScheduler::is_initialized() ) {
+				return new WP_Error(
+					'action_scheduler_not_initialized',
+					'Action Scheduler is loaded but not initialized. This may be due to WordPress loading order issues.'
+				);
+			}
+
+			global $wpdb;
+			$table_name   = $wpdb->prefix . 'actionscheduler_actions';
+			$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) === $table_name;
+
+			if ( ! $table_exists ) {
+				return new WP_Error(
+					'action_scheduler_tables_missing',
+					'Action Scheduler database tables are missing. Please ensure Action Scheduler has been properly installed and activated.'
+				);
+			}
+
+			return new WP_Error(
+				'action_scheduler_unknown_error',
+				'Action Scheduler is not ready for unknown reasons. Please check error logs for details.'
+			);
+		}
+
+		return true;
+	}
 
 	/**
 	 * Configure the Task_Scheduler class.
@@ -117,6 +310,12 @@ class Task_Scheduler {
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
 	public static function add_task( string $hook, int $delay = 0, array $args = [], string $group = '', ?int $priority = null, string $unique = self::UNIQUE_NONE ) {
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
+		}
+
 		// If no uniqueness check is requested, schedule directly.
 		if ( self::UNIQUE_NONE === $unique ) {
 			return self::schedule_single_action( $hook, $delay, $args, $group, $priority );
@@ -141,6 +340,12 @@ class Task_Scheduler {
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
 	public static function add_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
+		}
+
 		// Validate interval.
 		if ( $interval <= 0 ) {
 			return new WP_Error( 'invalid_interval', 'Interval must be greater than 0.' );
@@ -168,6 +373,12 @@ class Task_Scheduler {
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
 	public static function add_unique_task( string $hook, int $delay = 0, array $args = [], string $group = '', ?int $priority = null, string $unique = self::UNIQUE_NONE ) {
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
+		}
+
 		$validation_result = self::validate_common_params( $hook, $delay );
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
@@ -211,6 +422,12 @@ class Task_Scheduler {
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
 	public static function add_unique_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
+		}
+
 		// Validate interval.
 		if ( $interval <= 0 ) {
 			return new WP_Error( 'invalid_interval', 'Interval must be greater than 0.' );
@@ -252,9 +469,10 @@ class Task_Scheduler {
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
 	public static function cancel_task( int $action_id ) {
-		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_unschedule_action' ) ) {
-			return new WP_Error( 'action_scheduler_not_available', 'Action Scheduler is not available.' );
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
 		}
 
 		return self::execute_with_error_handling(
@@ -281,9 +499,10 @@ class Task_Scheduler {
 	 * @return string|WP_Error Task status or WP_Error on failure.
 	 */
 	public static function get_task_status( int $action_id ) {
-		// Check if Action Scheduler is available.
-		if ( ! class_exists( 'ActionScheduler' ) ) {
-			return new WP_Error( 'action_scheduler_not_available', 'Action Scheduler is not available.' );
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
 		}
 
 		return self::execute_with_error_handling(
@@ -313,9 +532,10 @@ class Task_Scheduler {
 	 * @return array|WP_Error Array of tasks or WP_Error on failure.
 	 */
 	public static function get_tasks_by_group( string $group, string $status = 'pending', int $limit = 50 ) {
-		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
-			return new WP_Error( 'action_scheduler_not_available', 'Action Scheduler is not available.' );
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
 		}
 
 		// Sanitize group name.
@@ -359,9 +579,10 @@ class Task_Scheduler {
 	 * @return int|WP_Error Number of tasks cleared or WP_Error on failure.
 	 */
 	public static function clear_group_tasks( string $group ) {
-		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_get_scheduled_actions' ) || ! function_exists( 'as_unschedule_action' ) ) {
-			return new WP_Error( 'action_scheduler_not_available', 'Action Scheduler is not available.' );
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
 		}
 
 		// Sanitize group name.
@@ -402,7 +623,7 @@ class Task_Scheduler {
 	 */
 	public static function get_task_by_hook_and_args( string $hook, array $args, string $group = '' ) {
 		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+		if ( ! self::ensure_action_scheduler_ready() ) {
 			return false;
 		}
 
@@ -447,24 +668,54 @@ class Task_Scheduler {
 	 * @return bool True if Action Scheduler is available, false otherwise.
 	 */
 	public static function is_available(): bool {
-		if ( ! function_exists( 'as_schedule_single_action' ) ) {
-			return false;
+		return self::ensure_action_scheduler_ready();
+	}
+
+	/**
+	 * Get detailed initialization status.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return array Status information.
+	 */
+	public static function get_initialization_status(): array {
+		$status = [
+			'wordpress_loaded'             => defined( 'ABSPATH' ),
+			'action_scheduler_loaded'      => class_exists( 'ActionScheduler' ),
+			'action_scheduler_initialized' => false,
+			'database_tables_exist'        => false,
+			'ready'                        => false,
+			'errors'                       => [],
+		];
+
+		if ( ! $status['wordpress_loaded'] ) {
+			$status['errors'][] = 'WordPress is not loaded';
+			return $status;
 		}
 
-		if ( ! class_exists( 'ActionScheduler' ) ) {
-			return false;
+		if ( ! $status['action_scheduler_loaded'] ) {
+			$status['errors'][] = 'Action Scheduler is not loaded';
+			return $status;
 		}
 
-		if ( ! \ActionScheduler::is_initialized() ) {
-			return false;
+		$status['action_scheduler_initialized'] = ActionScheduler::is_initialized();
+
+		if ( ! $status['action_scheduler_initialized'] ) {
+			$status['errors'][] = 'Action Scheduler is not initialized';
+			return $status;
 		}
 
-		// Check if Action Scheduler tables exist.
 		global $wpdb;
-		$table_name   = $wpdb->prefix . 'actionscheduler_actions';
-		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) === $table_name;
+		$table_name                      = $wpdb->prefix . 'actionscheduler_actions';
+		$status['database_tables_exist'] = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) === $table_name;
 
-		return $table_exists;
+		if ( ! $status['database_tables_exist'] ) {
+			$status['errors'][] = 'Action Scheduler database tables do not exist';
+			return $status;
+		}
+
+		$status['ready'] = true;
+		return $status;
 	}
 
 	/**
@@ -479,9 +730,10 @@ class Task_Scheduler {
 	 * @return array|WP_Error Array of tasks or WP_Error on failure.
 	 */
 	public static function get_tasks_by_args( string $hook, array $args, string $group = '', string $status = 'pending' ) {
-		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
-			return new WP_Error( 'action_scheduler_not_available', 'Action Scheduler is not available.' );
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
 		}
 
 		// Sanitize hook name.
@@ -539,7 +791,7 @@ class Task_Scheduler {
 	 */
 	public static function has_scheduled_task( string $hook, string $group = '', string $status = 'pending' ): bool {
 		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+		if ( ! self::ensure_action_scheduler_ready() ) {
 			return false;
 		}
 
@@ -585,7 +837,7 @@ class Task_Scheduler {
 	 */
 	public static function has_scheduled_recurring_task( string $hook, string $group = '', string $status = 'pending' ): bool {
 		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+		if ( ! self::ensure_action_scheduler_ready() ) {
 			return false;
 		}
 
@@ -618,8 +870,8 @@ class Task_Scheduler {
 				$action_ids = as_get_scheduled_actions( $query_args, 'ids' );
 
 				// Check each action individually using ActionScheduler store.
-				if ( class_exists( '\ActionScheduler' ) ) {
-					$store = \ActionScheduler::store();
+				if ( class_exists( 'ActionScheduler' ) ) {
+					$store = ActionScheduler::store();
 
 					foreach ( $action_ids as $action_id ) {
 						try {
@@ -679,9 +931,10 @@ class Task_Scheduler {
 	 * @return array|WP_Error Array of tasks or WP_Error on failure.
 	 */
 	public static function get_tasks_by_hook( string $hook, string $group = '', string $status = 'pending' ) {
-		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
-			return new WP_Error( 'action_scheduler_not_available', 'Action Scheduler is not available.' );
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
 		}
 
 		// Sanitize hook name.
@@ -757,9 +1010,10 @@ class Task_Scheduler {
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
 	public static function delete_task( int $action_id ) {
-		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_unschedule_action' ) ) {
-			return new WP_Error( 'action_scheduler_not_available', 'Action Scheduler is not available.' );
+		// Validate Action Scheduler availability.
+		$validation_result = self::validate_action_scheduler_available();
+		if ( is_wp_error( $validation_result ) ) {
+			return $validation_result;
 		}
 
 		return self::execute_with_error_handling(
@@ -790,7 +1044,7 @@ class Task_Scheduler {
 	 */
 	public static function get_task_count( string $hook, array $args = [], string $group = '', string $status = 'pending' ): int {
 		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+		if ( ! self::ensure_action_scheduler_ready() ) {
 			return 0;
 		}
 
@@ -835,11 +1089,6 @@ class Task_Scheduler {
 	 * @return true|WP_Error True on success, WP_Error on failure.
 	 */
 	private static function validate_common_params( string $hook, int $delay ) {
-		// Check if Action Scheduler is available.
-		if ( ! function_exists( 'as_schedule_single_action' ) ) {
-			return new WP_Error( 'action_scheduler_not_available', 'Action Scheduler is not available.' );
-		}
-
 		// Validate hook name.
 		if ( empty( $hook ) ) {
 			return new WP_Error( 'invalid_hook', 'Hook name cannot be empty.' );
