@@ -616,8 +616,6 @@ class Task_Scheduler {
 				// Get action IDs for this status.
 				$action_ids = as_get_scheduled_actions( $query_args, 'ids' );
 
-				error_log( self::$log_prefix . ': DEBUG has_scheduled_recurring_task - Hook: ' . $hook . ', Full hook: ' . $full_hook . ', Group: ' . $group . ', Status: ' . $check_status . ', Found action IDs: ' . count( $action_ids ) );
-
 				// Check each action individually using ActionScheduler store.
 				if ( class_exists( '\ActionScheduler' ) ) {
 					$store = \ActionScheduler::store();
@@ -630,8 +628,6 @@ class Task_Scheduler {
 								if ( $schedule ) {
 									$schedule_name = method_exists( $schedule, 'get_name' ) ? $schedule->get_name() : '';
 									$interval = method_exists( $schedule, 'get_interval' ) ? $schedule->get_interval() : 0;
-
-									error_log( self::$log_prefix . ': DEBUG Action ID: ' . $action_id . ', Schedule name: ' . $schedule_name . ', Interval: ' . $interval . ', Schedule class: ' . get_class( $schedule ) );
 
 									// Check if this is a recurring schedule.
 									$is_recurring = false;
@@ -654,30 +650,22 @@ class Task_Scheduler {
 									}
 
 									if ( $is_recurring ) {
-										error_log( self::$log_prefix . ': DEBUG FOUND RECURRING TASK - Action ID: ' . $action_id . ', Schedule: ' . $schedule_name . ', Interval: ' . $interval . ', Status: ' . $check_status . ', Class: ' . get_class( $schedule ) );
 										return true;
 									}
-								} else {
-									error_log( self::$log_prefix . ': DEBUG Action ID: ' . $action_id . ' has no schedule' );
 								}
-							} else {
-								error_log( self::$log_prefix . ': DEBUG Action ID: ' . $action_id . ' could not be fetched' );
 							}
 						} catch ( Exception $e ) {
 							// Log the error for debugging.
-							error_log( self::$log_prefix . ': DEBUG Error fetching action ' . $action_id . ': ' . $e->getMessage() );
+							error_log( self::$log_prefix . ': Error fetching action ' . $action_id . ': ' . $e->getMessage() );
 						}
 					}
-				} else {
-					error_log( self::$log_prefix . ': DEBUG ActionScheduler class not found' );
 				}
 			}
 
-			error_log( self::$log_prefix . ': DEBUG No recurring tasks found for hook: ' . $hook . ' in any status' );
 			return false;
 		} catch ( Exception $e ) {
 			// Log the error for debugging.
-			error_log( self::$log_prefix . ': DEBUG Error checking scheduled recurring task: ' . $e->getMessage() );
+			error_log( self::$log_prefix . ': Error checking scheduled recurring task: ' . $e->getMessage() );
 			return false;
 		}
 	}
