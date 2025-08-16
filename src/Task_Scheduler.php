@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace Nilambar\Task_Scheduler;
 
 use WP_Error;
+use Exception;
 
 /**
  * Class Task_Scheduler.
@@ -430,7 +431,7 @@ class Task_Scheduler {
 			}
 
 			return false;
-		} catch ( \Exception $e ) {
+		} catch ( Exception $e ) {
 			// Log the error for debugging.
 			error_log( self::$log_prefix . ': Error getting task by hook and args: ' . $e->getMessage() );
 			return false;
@@ -523,6 +524,153 @@ class Task_Scheduler {
 			'Error getting tasks by args: ',
 			'Failed to get tasks by args.'
 		);
+	}
+
+	/**
+	 * Check if a task with the specified hook exists.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $hook Action hook name (without prefix).
+	 * @param string $group Action group (optional).
+	 * @param string $status Task status filter (default: 'pending').
+	 * @return bool True if task exists, false otherwise.
+	 */
+	public static function has_scheduled_task( string $hook, string $group = '', string $status = 'pending' ): bool {
+		// Check if Action Scheduler is available.
+		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+			return false;
+		}
+
+		// Sanitize hook name.
+		$hook = sanitize_key( $hook );
+
+		// Add prefix to hook if not already present.
+		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+
+		// Sanitize group name.
+		$group = sanitize_key( $group );
+
+		try {
+			$query_args = [
+				'hook'   => $full_hook,
+				'status' => $status,
+			];
+
+			// Add group filter if specified.
+			if ( ! empty( $group ) ) {
+				$query_args['group'] = $group;
+			}
+
+			$actions = as_get_scheduled_actions( $query_args, 'ids' );
+
+			return ! empty( $actions );
+		} catch ( Exception $e ) {
+			// Log the error for debugging.
+			error_log( self::$log_prefix . ': Error checking scheduled task: ' . $e->getMessage() );
+			return false;
+		}
+	}
+
+	/**
+	 * Check if a recurring task with the specified hook exists.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $hook Action hook name (without prefix).
+	 * @param string $group Action group (optional).
+	 * @param string $status Task status filter (default: 'pending').
+	 * @return bool True if recurring task exists, false otherwise.
+	 */
+	public static function has_scheduled_recurring_task( string $hook, string $group = '', string $status = 'pending' ): bool {
+		// Check if Action Scheduler is available.
+		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+			return false;
+		}
+
+		// Sanitize hook name.
+		$hook = sanitize_key( $hook );
+
+		// Add prefix to hook if not already present.
+		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+
+		// Sanitize group name.
+		$group = sanitize_key( $group );
+
+		try {
+			$query_args = [
+				'hook'   => $full_hook,
+				'status' => $status,
+			];
+
+			// Add group filter if specified.
+			if ( ! empty( $group ) ) {
+				$query_args['group'] = $group;
+			}
+
+			$actions = as_get_scheduled_actions( $query_args, ARRAY_A );
+
+			// Check if any of the actions are recurring.
+			foreach ( $actions as $action ) {
+				if ( isset( $action['schedule'] ) && ! empty( $action['schedule'] ) ) {
+					return true;
+				}
+			}
+
+			return false;
+		} catch ( Exception $e ) {
+			// Log the error for debugging.
+			error_log( self::$log_prefix . ': Error checking scheduled recurring task: ' . $e->getMessage() );
+			return false;
+		}
+	}
+
+	/**
+	 * Get count of tasks with specific criteria.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $hook Action hook name (without prefix).
+	 * @param array  $args Arguments to match (optional).
+	 * @param string $group Action group (optional).
+	 * @param string $status Task status filter (default: 'pending').
+	 * @return int Number of tasks matching the criteria.
+	 */
+	public static function get_task_count( string $hook, array $args = [], string $group = '', string $status = 'pending' ): int {
+		// Check if Action Scheduler is available.
+		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+			return 0;
+		}
+
+		// Sanitize hook name.
+		$hook = sanitize_key( $hook );
+
+		// Add prefix to hook if not already present.
+		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+
+		// Sanitize group name.
+		$group = sanitize_key( $group );
+
+		try {
+			$query_args = [
+				'hook'   => $full_hook,
+				'args'   => $args,
+				'status' => $status,
+			];
+
+			// Add group filter if specified.
+			if ( ! empty( $group ) ) {
+				$query_args['group'] = $group;
+			}
+
+			$actions = as_get_scheduled_actions( $query_args, 'ids' );
+
+			return count( $actions );
+		} catch ( Exception $e ) {
+			// Log the error for debugging.
+			error_log( self::$log_prefix . ': Error getting task count: ' . $e->getMessage() );
+			return 0;
+		}
 	}
 
 	/**
@@ -772,7 +920,7 @@ class Task_Scheduler {
 	private static function execute_with_error_handling( callable $callback, string $log_message, string $error_message ) {
 		try {
 			return $callback();
-		} catch ( \Exception $e ) {
+		} catch ( Exception $e ) {
 			// Log the error for debugging.
 			error_log( self::$log_prefix . ': ' . $log_message . $e->getMessage() );
 
