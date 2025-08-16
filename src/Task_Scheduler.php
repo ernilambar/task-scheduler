@@ -21,6 +21,16 @@ use WP_Error;
 class Task_Scheduler {
 
 	/**
+	 * Uniqueness levels.
+	 *
+	 * @since 1.0.0
+	 */
+	const UNIQUE_NONE  = 'none';
+	const UNIQUE_HOOK  = 'hook';
+	const UNIQUE_GROUP = 'group';
+	const UNIQUE_ARGS  = 'args';
+
+	/**
 	 * Hook prefix for action scheduler actions.
 	 *
 	 * @since 1.0.0
@@ -102,16 +112,16 @@ class Task_Scheduler {
 	 * @param array    $args     Arguments to pass to the action (default: []).
 	 * @param string   $group    Action group (default: configured default group).
 	 * @param int|null $priority Priority of the action (default: null).
-	 * @param bool     $unique   Whether to ensure the action is unique (default: true).
+	 * @param string   $unique   Uniqueness level (default: UNIQUE_NONE).
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	public static function add_task( string $hook, int $delay = 0, array $args = [], string $group = '', ?int $priority = null, bool $unique = true ) {
-		// If uniqueness is requested, use argument-based uniqueness check.
-		if ( $unique ) {
-			return self::add_unique_task_by_args( $hook, $delay, $args, $group, $priority );
+	public static function add_task( string $hook, int $delay = 0, array $args = [], string $group = '', ?int $priority = null, string $unique = self::UNIQUE_NONE ) {
+		// If no uniqueness check is requested, schedule directly.
+		if ( self::UNIQUE_NONE === $unique ) {
+			return self::schedule_single_action( $hook, $delay, $args, $group, $priority );
 		}
 
-		return self::schedule_single_action( $hook, $delay, $args, $group, $priority );
+		return self::add_unique_task( $hook, $delay, $args, $group, $priority, $unique );
 	}
 
 	/**
@@ -126,22 +136,25 @@ class Task_Scheduler {
 	 * @param string   $group       Action group (default: configured default group).
 	 * @param int|null $priority    Priority of the action (default: null).
 	 * @param int|null $max_runs    Maximum number of runs (default: null for unlimited).
+	 * @param string   $unique      Uniqueness level (default: UNIQUE_NONE).
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	public static function add_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null ) {
+	public static function add_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
 		// Validate interval.
 		if ( $interval <= 0 ) {
 			return new WP_Error( 'invalid_interval', 'Interval must be greater than 0.' );
 		}
 
-		return self::schedule_recurring_action( $hook, $interval, $args, $delay, $group, $priority, $max_runs );
+		// If no uniqueness check is requested, schedule directly.
+		if ( self::UNIQUE_NONE === $unique ) {
+			return self::schedule_recurring_action( $hook, $interval, $args, $delay, $group, $priority, $max_runs );
+		}
+
+		return self::add_unique_repeating_task( $hook, $interval, $args, $delay, $group, $priority, $max_runs, $unique );
 	}
 
 	/**
-	 * Add a non-repeating task to the queue with argument-based uniqueness.
-	 *
-	 * Checks for existing actions with same hook and arguments before scheduling.
-	 * Returns existing action ID if duplicate is found.
+	 * Add a non-repeating task to the queue with specified uniqueness level.
 	 *
 	 * @since 1.0.0
 	 *
@@ -150,9 +163,10 @@ class Task_Scheduler {
 	 * @param array    $args     Arguments to pass to the action (default: []).
 	 * @param string   $group    Action group (default: configured default group).
 	 * @param int|null $priority Priority of the action (default: null).
+	 * @param string   $unique   Uniqueness level (default: UNIQUE_NONE).
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	public static function add_unique_task_by_args( string $hook, int $delay = 0, array $args = [], string $group = '', ?int $priority = null ) {
+	public static function add_unique_task( string $hook, int $delay = 0, array $args = [], string $group = '', ?int $priority = null, string $unique = self::UNIQUE_NONE ) {
 		$validation_result = self::validate_common_params( $hook, $delay );
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
@@ -173,15 +187,15 @@ class Task_Scheduler {
 			$group,
 			$execution_time,
 			$priority,
-			'single'
+			'single',
+			null,
+			null,
+			$unique
 		);
 	}
 
 	/**
-	 * Add a repeating task to the queue with argument-based uniqueness.
-	 *
-	 * Checks for existing actions with same hook and arguments before scheduling.
-	 * Returns existing action ID if duplicate is found.
+	 * Add a repeating task to the queue with specified uniqueness level.
 	 *
 	 * @since 1.0.0
 	 *
@@ -192,9 +206,10 @@ class Task_Scheduler {
 	 * @param string   $group       Action group (default: configured default group).
 	 * @param int|null $priority    Priority of the action (default: null).
 	 * @param int|null $max_runs    Maximum number of runs (default: null for unlimited).
+	 * @param string   $unique      Uniqueness level (default: UNIQUE_NONE).
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	public static function add_unique_repeating_task_by_args( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null ) {
+	public static function add_unique_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
 		// Validate interval.
 		if ( $interval <= 0 ) {
 			return new WP_Error( 'invalid_interval', 'Interval must be greater than 0.' );
@@ -222,7 +237,8 @@ class Task_Scheduler {
 			$priority,
 			'recurring',
 			$interval,
-			$max_runs
+			$max_runs,
+			$unique
 		);
 	}
 
@@ -580,26 +596,37 @@ class Task_Scheduler {
 	 * @param string   $type           Action type ('single' or 'recurring').
 	 * @param int|null $interval       Interval for recurring actions.
 	 * @param int|null $max_runs       Maximum runs for recurring actions.
+	 * @param string   $unique         Uniqueness level.
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	private static function execute_with_uniqueness_check( string $full_hook, array $args, string $group, int $execution_time, ?int $priority, string $type, ?int $interval = null, ?int $max_runs = null ) {
+	private static function execute_with_uniqueness_check( string $full_hook, array $args, string $group, int $execution_time, ?int $priority, string $type, ?int $interval = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
 		return self::execute_with_error_handling(
-			function () use ( $full_hook, $args, $group, $execution_time, $priority, $type, $interval, $max_runs ) {
-				// Check for existing actions with same hook and arguments.
-				$existing_actions = as_get_scheduled_actions(
-					[
-						'hook'   => $full_hook,
-						'args'   => $args,
-						'status' => [ 'pending', 'running' ],
-					],
-					'ids'
-				);
+			function () use ( $full_hook, $args, $group, $execution_time, $priority, $type, $interval, $max_runs, $unique ) {
+				// Build query based on uniqueness level.
+				$query_args = [
+					'hook'   => $full_hook,
+					'status' => [ 'pending', 'running' ],
+				];
+
+				// Add group filter for group and args uniqueness.
+				if ( in_array( $unique, [ self::UNIQUE_GROUP, self::UNIQUE_ARGS ], true ) ) {
+					$query_args['group'] = $group;
+				}
+
+				// Add args filter for args uniqueness only.
+				if ( self::UNIQUE_ARGS === $unique ) {
+					$query_args['args'] = $args;
+				}
+
+				// Check for existing actions based on uniqueness level.
+				$existing_actions = as_get_scheduled_actions( $query_args, 'ids' );
 
 				// Return existing action ID if found.
 				if ( ! empty( $existing_actions ) ) {
-					$existing_id = $existing_actions[0];
-					$action_type = 'recurring' === $type ? 'recurring action' : 'action';
-					error_log( sprintf( self::$log_prefix . ': Duplicate %s detected for hook "%s" with args %s. Returning existing action ID: %d', $action_type, $full_hook, wp_json_encode( $args ), $existing_id ) );
+					$existing_id     = $existing_actions[0];
+					$action_type     = 'recurring' === $type ? 'recurring action' : 'action';
+					$uniqueness_desc = self::get_uniqueness_description( $unique, $full_hook, $group, $args );
+					error_log( sprintf( self::$log_prefix . ': Duplicate %s detected (%s). Returning existing action ID: %d', $action_type, $uniqueness_desc, $existing_id ) );
 					return $existing_id;
 				}
 
@@ -694,8 +721,8 @@ class Task_Scheduler {
 		$group          = $processed_params['group'];
 
 		return self::execute_with_error_handling(
-			function () use ( $full_hook, $args, $group, $execution_time, $priority, $interval ) {
-				$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, $args, $group, false, $priority ?? 10 );
+			function () use ( $full_hook, $args, $group, $execution_time, $priority, $interval, $max_runs ) {
+				$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, $args, $group, $max_runs, $priority ?? 10 );
 
 				if ( 0 === $action_id ) {
 					return new WP_Error( 'schedule_failed', 'Failed to schedule recurring action.' );
@@ -706,6 +733,30 @@ class Task_Scheduler {
 			'Error adding repeating task to queue: ',
 			'Failed to add repeating task to queue.'
 		);
+	}
+
+	/**
+	 * Get description of uniqueness check for logging.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $unique     Uniqueness level.
+	 * @param string $full_hook  Full hook name.
+	 * @param string $group      Action group.
+	 * @param array  $args       Action arguments.
+	 * @return string Description of uniqueness check.
+	 */
+	private static function get_uniqueness_description( string $unique, string $full_hook, string $group, array $args ): string {
+		switch ( $unique ) {
+			case self::UNIQUE_HOOK:
+				return sprintf( 'hook: %s', $full_hook );
+			case self::UNIQUE_GROUP:
+				return sprintf( 'hook: %s, group: %s', $full_hook, $group );
+			case self::UNIQUE_ARGS:
+				return sprintf( 'hook: %s, group: %s, args: %s', $full_hook, $group, wp_json_encode( $args ) );
+			default:
+				return 'unknown uniqueness level';
+		}
 	}
 
 	/**
