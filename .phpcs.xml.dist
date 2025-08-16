@@ -79,5 +79,5 @@
 	</rule>
 
 	<!-- PHP version check. -->
-	<config name="testVersion" value="7.2-"/>
+	<config name="testVersion" value="7.4-"/>
 </ruleset>

@@ -7,7 +7,7 @@
 
 declare(strict_types=1);
 
-namespace Nilambar\Task_Scheduler\Utils;
+namespace Nilambar\Task_Scheduler;
 
 use WP_Error;
 
@@ -15,27 +15,6 @@ use WP_Error;
  * Class Task_Scheduler.
  *
  * Provides a clean interface for Action Scheduler operations.
- *
- * Uniqueness Implementation:
- * - Checks for existing actions with same hook and arguments before scheduling
- * - Returns existing action ID if duplicate is found
- * - Prevents duplicate task creation
- *
- * Usage Example:
- * ```php
- * Task_Scheduler::configure(
- *     'myplugin_',           // Hook prefix
- *     'myplugin_default',    // Default group
- *     'MyPlugin'             // Log prefix
- * );
- *
- * $task_id = Task_Scheduler::add_task(
- *     'process_item',
- *     60,                    // 60 second delay
- *     ['item_id' => 123],    // Arguments
- *     'my_group'             // Optional group
- * );
- * ```
  *
  * @since 1.0.0
  */
