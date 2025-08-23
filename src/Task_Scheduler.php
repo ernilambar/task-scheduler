@@ -861,7 +861,7 @@ class Task_Scheduler {
 			}
 
 			// Check multiple statuses to be more thorough.
-			$statuses_to_check = [ 'pending', 'running', 'in-progress' ];
+			$statuses_to_check = [ 'pending', 'in-progress' ];
 
 			foreach ( $statuses_to_check as $check_status ) {
 				$query_args['status'] = $check_status;
@@ -1154,7 +1154,7 @@ class Task_Scheduler {
 				// Build query based on uniqueness level.
 				$query_args = [
 					'hook'   => $full_hook,
-					'status' => [ 'pending', 'running' ],
+					'status' => [ 'pending', 'in-progress' ],
 				];
 
 				// Add group filter for group and args uniqueness.
