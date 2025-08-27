@@ -133,6 +133,76 @@ $task_id = Task_Scheduler::add_repeating_task(
 );
 ```
 
+### Handling Task Callbacks
+
+When your scheduled tasks execute, the callback function receives the task arguments in a structured format. Use the `get_task_args()` helper method to extract the arguments:
+
+```php
+// Schedule a task
+$task_id = Task_Scheduler::add_task(
+    'process_user_data',
+    0,
+    [
+        'user_id' => 123,
+        'action' => 'update_profile',
+        'data' => ['name' => 'John Doe', 'email' => 'john@example.com']
+    ],
+    'user_processing',
+    null,
+    Task_Scheduler::UNIQUE_ARGS
+);
+
+// Handle the task callback
+public function process_user_data_callback( $args ) {
+    // Extract task arguments using the helper method
+    $task_args = Task_Scheduler::get_task_args( $args );
+
+    $user_id = $task_args['user_id'] ?? 0;
+    $action = $task_args['action'] ?? '';
+    $data = $task_args['data'] ?? [];
+
+    if ( empty( $user_id ) || empty( $action ) ) {
+        error_log( 'Missing required parameters for user data processing' );
+        return;
+    }
+
+    // Process the user data
+    switch ( $action ) {
+        case 'update_profile':
+            $this->update_user_profile( $user_id, $data );
+            break;
+        default:
+            error_log( "Unknown action: {$action}" );
+    }
+}
+```
+
+#### Simple Example
+
+```php
+// Schedule
+Task_Scheduler::add_task(
+    'send_email',
+    0,
+    ['to' => 'user@example.com', 'subject' => 'Welcome!'],
+    'emails',
+    null,
+    Task_Scheduler::UNIQUE_ARGS
+);
+
+// Callback
+public function send_email_callback( $args ) {
+    $task_args = Task_Scheduler::get_task_args( $args );
+
+    $to = $task_args['to'] ?? '';
+    $subject = $task_args['subject'] ?? '';
+
+    if ( ! empty( $to ) && ! empty( $subject ) ) {
+        wp_mail( $to, $subject, 'Your email content here' );
+    }
+}
+```
+
 ### Task Management
 
 #### Cancel Tasks
@@ -241,6 +311,7 @@ if (is_wp_error($result)) {
 ### Utility Methods
 
 - `is_available()`: Check if Action Scheduler is available
+- `get_task_args(array $args)`: Extract task arguments from callback parameters
 
 ## Uniqueness Levels
 
@@ -310,6 +381,7 @@ Common error codes returned by the library:
 4. **Choose appropriate uniqueness level**: Use UNIQUE_NONE for logging/monitoring, UNIQUE_ARGS for critical tasks
 5. **Monitor task execution**: Use the query methods to monitor task status
 6. **Clean up old tasks**: Regularly clear completed or failed tasks
+7. **Use `get_task_args()`**: Always use the helper method to extract arguments from callbacks
 
 ## Contributing
 

@@ -1164,7 +1164,7 @@ class Task_Scheduler {
 
 				// Add args filter for args uniqueness only.
 				if ( self::UNIQUE_ARGS === $unique ) {
-					$query_args['args'] = $args;
+					$query_args['args'] = [ 'task_args' => $args ];
 				}
 
 				// Check for existing actions based on uniqueness level.
@@ -1202,9 +1202,9 @@ class Task_Scheduler {
 
 				// Schedule the action.
 				if ( 'recurring' === $type ) {
-					$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, $args, $group, false, $priority ?? 10 );
+					$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, [ 'task_args' => $args ], $group, false, $priority ?? 10 );
 				} else {
-					$action_id = as_schedule_single_action( $execution_time, $full_hook, $args, $group, false, $priority ?? 10 );
+					$action_id = as_schedule_single_action( $execution_time, $full_hook, [ 'task_args' => $args ], $group, false, $priority ?? 10 );
 				}
 
 				if ( 0 === $action_id ) {
@@ -1248,7 +1248,7 @@ class Task_Scheduler {
 
 		return self::execute_with_error_handling(
 			function () use ( $full_hook, $args, $group, $execution_time, $priority ) {
-				$action_id = as_schedule_single_action( $execution_time, $full_hook, $args, $group, false, $priority ?? 10 );
+				$action_id = as_schedule_single_action( $execution_time, $full_hook, [ 'task_args' => $args ], $group, false, $priority ?? 10 );
 
 				if ( 0 === $action_id ) {
 					return new WP_Error( 'schedule_failed', 'Failed to schedule action.' );
@@ -1292,7 +1292,7 @@ class Task_Scheduler {
 
 		return self::execute_with_error_handling(
 			function () use ( $full_hook, $args, $group, $execution_time, $priority, $interval, $max_runs ) {
-				$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, $args, $group, $max_runs, $priority ?? 10 );
+				$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, [ 'task_args' => $args ], $group, $max_runs, $priority ?? 10 );
 
 				if ( 0 === $action_id ) {
 					return new WP_Error( 'schedule_failed', 'Failed to schedule recurring action.' );
@@ -1327,6 +1327,18 @@ class Task_Scheduler {
 			default:
 				return 'unknown uniqueness level';
 		}
+	}
+
+	/**
+	 * Extract task arguments from the callback parameters.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param array $args The arguments passed to the callback function.
+	 * @return array The task arguments array.
+	 */
+	public static function get_task_args( array $args ): array {
+		return $args['task_args'] ?? [];
 	}
 
 	/**
