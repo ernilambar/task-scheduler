@@ -316,15 +316,12 @@ class Task_Scheduler {
 			return $validation_result;
 		}
 
-		// If args is an associative array, wrap it so the callback receives it as a single parameter.
-		$processed_args = self::is_associative_array( $args ) ? [ $args ] : $args;
-
 		// If no uniqueness check is requested, schedule directly.
 		if ( self::UNIQUE_NONE === $unique ) {
-			return self::schedule_single_action( $hook, $delay, $processed_args, $group, $priority );
+			return self::schedule_single_action( $hook, $delay, $args, $group, $priority );
 		}
 
-		return self::add_unique_task( $hook, $delay, $processed_args, $group, $priority, $unique );
+		return self::add_unique_task( $hook, $delay, $args, $group, $priority, $unique );
 	}
 
 	/**
@@ -354,15 +351,12 @@ class Task_Scheduler {
 			return new WP_Error( 'invalid_interval', 'Interval must be greater than 0.' );
 		}
 
-		// If args is an associative array, wrap it so the callback receives it as a single parameter.
-		$processed_args = self::is_associative_array( $args ) ? [ $args ] : $args;
-
 		// If no uniqueness check is requested, schedule directly.
 		if ( self::UNIQUE_NONE === $unique ) {
-			return self::schedule_recurring_action( $hook, $interval, $processed_args, $delay, $group, $priority, $max_runs );
+			return self::schedule_recurring_action( $hook, $interval, $args, $delay, $group, $priority, $max_runs );
 		}
 
-		return self::add_unique_repeating_task( $hook, $interval, $processed_args, $delay, $group, $priority, $max_runs, $unique );
+		return self::add_unique_repeating_task( $hook, $interval, $args, $delay, $group, $priority, $max_runs, $unique );
 	}
 
 	/**
@@ -1358,33 +1352,5 @@ class Task_Scheduler {
 				[ 'exception' => $e->getMessage() ]
 			);
 		}
-	}
-
-	/**
-	 * Check if an array is associative.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param array $array Array to check.
-	 * @return bool True if associative, false otherwise.
-	 */
-	private static function is_associative_array( array $array ): bool {
-		// Empty arrays are considered indexed.
-		if ( empty( $array ) ) {
-			return false;
-		}
-
-		// Check if any key is a string (associative).
-		foreach ( array_keys( $array ) as $key ) {
-			if ( is_string( $key ) ) {
-				return true;
-			}
-		}
-
-		// Check if numeric keys are sequential starting from 0.
-		$keys          = array_keys( $array );
-		$expected_keys = range( 0, count( $array ) - 1 );
-
-		return $keys !== $expected_keys;
 	}
 }
