@@ -636,7 +636,7 @@ class Task_Scheduler {
 		try {
 			$query_args = [
 				'hook'   => $full_hook,
-				'args'   => $args,
+				'args'   => [ 'task_args' => $args ],
 				'status' => [ 'pending', 'in-progress' ],
 			];
 
@@ -749,7 +749,7 @@ class Task_Scheduler {
 			function () use ( $full_hook, $args, $group, $status ) {
 				$query_args = [
 					'hook'   => $full_hook,
-					'args'   => $args,
+					'args'   => [ 'task_args' => $args ],
 					'status' => $status,
 				];
 
@@ -1060,7 +1060,7 @@ class Task_Scheduler {
 		try {
 			$query_args = [
 				'hook'   => $full_hook,
-				'args'   => $args,
+				'args'   => [ 'task_args' => $args ],
 				'status' => $status,
 			];
 
@@ -1327,18 +1327,6 @@ class Task_Scheduler {
 			default:
 				return 'unknown uniqueness level';
 		}
-	}
-
-	/**
-	 * Extract task arguments from the callback parameters.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param array $args The arguments passed to the callback function.
-	 * @return array The task arguments array.
-	 */
-	public static function get_task_args( array $args ): array {
-		return $args['task_args'] ?? [];
 	}
 
 	/**

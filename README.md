@@ -119,23 +119,11 @@ $task_id = Task_Scheduler::add_repeating_task(
     null,                  // Max runs (optional).
     Task_Scheduler::UNIQUE_HOOK  // Only one daily backup task.
 );
-
-// Schedule unique recurring task with full uniqueness.
-$task_id = Task_Scheduler::add_repeating_task(
-    'sync_data',
-    1800,                  // Run every 30 minutes.
-    ['source' => 'api'],   // Arguments.
-    0,                     // No initial delay.
-    'sync',                // Group.
-    null,                  // Priority (optional).
-    null,                  // Max runs (optional).
-    Task_Scheduler::UNIQUE_ARGS  // Only one specific sync task.
-);
 ```
 
 ### Handling Task Callbacks
 
-When your scheduled tasks execute, the callback function receives the task arguments in a structured format. Use the `get_task_args()` helper method to extract the arguments:
+When your scheduled tasks execute, the callback function receives the task arguments directly:
 
 ```php
 // Schedule a task
@@ -153,13 +141,10 @@ $task_id = Task_Scheduler::add_task(
 );
 
 // Handle the task callback
-public function process_user_data_callback( $args ) {
-    // Extract task arguments using the helper method
-    $task_args = Task_Scheduler::get_task_args( $args );
-
-    $user_id = $task_args['user_id'] ?? 0;
-    $action = $task_args['action'] ?? '';
-    $data = $task_args['data'] ?? [];
+public function process_user_data_callback( array $args ) {
+    $user_id = $args['user_id'] ?? 0;
+    $action = $args['action'] ?? '';
+    $data = $args['data'] ?? [];
 
     if ( empty( $user_id ) || empty( $action ) ) {
         error_log( 'Missing required parameters for user data processing' );
@@ -191,11 +176,9 @@ Task_Scheduler::add_task(
 );
 
 // Callback
-public function send_email_callback( $args ) {
-    $task_args = Task_Scheduler::get_task_args( $args );
-
-    $to = $task_args['to'] ?? '';
-    $subject = $task_args['subject'] ?? '';
+public function send_email_callback( array $args ) {
+    $to = $args['to'] ?? '';
+    $subject = $args['subject'] ?? '';
 
     if ( ! empty( $to ) && ! empty( $subject ) ) {
         wp_mail( $to, $subject, 'Your email content here' );
@@ -311,7 +294,6 @@ if (is_wp_error($result)) {
 ### Utility Methods
 
 - `is_available()`: Check if Action Scheduler is available
-- `get_task_args(array $args)`: Extract task arguments from callback parameters
 
 ## Uniqueness Levels
 
@@ -381,7 +363,7 @@ Common error codes returned by the library:
 4. **Choose appropriate uniqueness level**: Use UNIQUE_NONE for logging/monitoring, UNIQUE_ARGS for critical tasks
 5. **Monitor task execution**: Use the query methods to monitor task status
 6. **Clean up old tasks**: Regularly clear completed or failed tasks
-7. **Use `get_task_args()`**: Always use the helper method to extract arguments from callbacks
+7. **Use array arguments**: Pass arguments as arrays for future-proof callback functions
 
 ## Contributing
 
