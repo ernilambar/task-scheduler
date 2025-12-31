@@ -37,15 +37,15 @@ require_once 'path/to/task-scheduler/src/Task_Scheduler.php';
 
 ## Basic Usage
 
-### Configuration
+### Getting an Instance
 
-First, configure the Task Scheduler with your preferred settings:
+Get a configured Task Scheduler instance. Instances are cached by configuration, so calling with the same parameters returns the same instance:
 
 ```php
 use Nilambar\Task_Scheduler\Task_Scheduler;
 
-// Configure with custom settings.
-Task_Scheduler::configure(
+// Get or create an instance with custom settings.
+$scheduler = Task_Scheduler::get_instance(
     'myplugin_',           // Hook prefix.
     'myplugin_default',    // Default group.
     'MyPlugin'             // Log prefix.
@@ -58,7 +58,7 @@ Task_Scheduler::configure(
 
 ```php
 // Schedule a simple task (no uniqueness check by default).
-$task_id = Task_Scheduler::add_task(
+$task_id = $scheduler->add_task(
     'process_item',
     60,                    // 60 second delay.
     ['item_id' => 123],    // Arguments.
@@ -66,7 +66,7 @@ $task_id = Task_Scheduler::add_task(
 );
 
 // Schedule with hook-only uniqueness.
-$task_id = Task_Scheduler::add_task(
+$task_id = $scheduler->add_task(
     'send_notification',
     0,
     ['user_id' => 123],
@@ -76,7 +76,7 @@ $task_id = Task_Scheduler::add_task(
 );
 
 // Schedule with group uniqueness.
-$task_id = Task_Scheduler::add_task(
+$task_id = $scheduler->add_task(
     'backup_site',
     3600,
     ['site_id' => 123],
@@ -86,7 +86,7 @@ $task_id = Task_Scheduler::add_task(
 );
 
 // Schedule with full uniqueness (hook + group + args).
-$task_id = Task_Scheduler::add_task(
+$task_id = $scheduler->add_task(
     'sync_data',
     0,
     ['user_id' => 123, 'type' => 'profile'],
@@ -100,7 +100,7 @@ $task_id = Task_Scheduler::add_task(
 
 ```php
 // Schedule a recurring task (no uniqueness check by default).
-$task_id = Task_Scheduler::add_repeating_task(
+$task_id = $scheduler->add_repeating_task(
     'cleanup_data',
     3600,                  // Run every hour.
     ['type' => 'temp'],    // Arguments.
@@ -109,7 +109,7 @@ $task_id = Task_Scheduler::add_repeating_task(
 );
 
 // Schedule unique recurring task with hook-only uniqueness.
-$task_id = Task_Scheduler::add_repeating_task(
+$task_id = $scheduler->add_repeating_task(
     'daily_backup',
     86400,                 // Run every day.
     ['backup_type' => 'full'],
@@ -126,8 +126,10 @@ $task_id = Task_Scheduler::add_repeating_task(
 When your scheduled tasks execute, the callback function receives the task arguments directly:
 
 ```php
+$scheduler = Task_Scheduler::get_instance('myplugin_', 'myplugin_default', 'MyPlugin');
+
 // Schedule a task
-$task_id = Task_Scheduler::add_task(
+$task_id = $scheduler->add_task(
     'process_user_data',
     0,
     [
@@ -141,7 +143,7 @@ $task_id = Task_Scheduler::add_task(
 );
 
 // Handle the task callback
-public function process_user_data_callback( array $args ) {
+add_action('myplugin_process_user_data', function( $args ) {
     $user_id = $args['user_id'] ?? 0;
     $action = $args['action'] ?? '';
     $data = $args['data'] ?? [];
@@ -154,85 +156,45 @@ public function process_user_data_callback( array $args ) {
     // Process the user data
     switch ( $action ) {
         case 'update_profile':
-            $this->update_user_profile( $user_id, $data );
+            update_user_meta( $user_id, 'profile_data', $data );
             break;
         default:
             error_log( "Unknown action: {$action}" );
     }
-}
-```
-
-#### Simple Example
-
-```php
-// Schedule
-Task_Scheduler::add_task(
-    'send_email',
-    0,
-    ['to' => 'user@example.com', 'subject' => 'Welcome!'],
-    'emails',
-    null,
-    Task_Scheduler::UNIQUE_ARGS
-);
-
-// Callback
-public function send_email_callback( array $args ) {
-    $to = $args['to'] ?? '';
-    $subject = $args['subject'] ?? '';
-
-    if ( ! empty( $to ) && ! empty( $subject ) ) {
-        wp_mail( $to, $subject, 'Your email content here' );
-    }
-}
+});
 ```
 
 ### Task Management
 
-#### Cancel Tasks
-
 ```php
+$scheduler = Task_Scheduler::get_instance('myplugin_', 'myplugin_default', 'MyPlugin');
+
 // Cancel a specific task.
-$result = Task_Scheduler::cancel_task($task_id);
+$result = $scheduler->cancel_task($task_id);
 
-if (is_wp_error($result)) {
-    // Handle error.
-    echo $result->get_error_message();
-} else {
-    // Task cancelled successfully.
-    echo "Task cancelled";
-}
-```
-
-#### Query Tasks
-
-```php
 // Get task status.
-$status = Task_Scheduler::get_task_status($task_id);
+$status = $scheduler->get_task_status($task_id);
 
 // Get tasks by group.
-$tasks = Task_Scheduler::get_tasks_by_group('my_group', 'pending', 10);
+$tasks = $scheduler->get_tasks_by_group('my_group', 'pending', 10);
 
 // Get tasks by arguments.
-$tasks = Task_Scheduler::get_tasks_by_args('process_item', ['item_id' => 123]);
+$tasks = $scheduler->get_tasks_by_args('process_item', ['item_id' => 123]);
 
 // Find specific task.
-$task = Task_Scheduler::get_task_by_hook_and_args('process_item', ['item_id' => 123]);
+$task = $scheduler->get_task_by_hook_and_args('process_item', ['item_id' => 123]);
 
 // Check if a task exists.
-$exists = Task_Scheduler::has_scheduled_task('process_item', 'my_group');
+$exists = $scheduler->has_scheduled_task('process_item', 'my_group');
 
 // Check if a recurring task exists.
-$recurring_exists = Task_Scheduler::has_scheduled_recurring_task('daily_backup', 'backups');
+$recurring_exists = $scheduler->has_scheduled_recurring_task('daily_backup', 'backups');
 
 // Get count of tasks.
-$count = Task_Scheduler::get_task_count('process_item', ['item_id' => 123], 'my_group');
-```
+$count = $scheduler->get_task_count('process_item', ['item_id' => 123], 'my_group');
 
-#### Clear Tasks
-
-```php
 // Clear all tasks in a group.
-$cleared_count = Task_Scheduler::clear_group_tasks('my_group');
+$cleared_count = $scheduler->clear_group_tasks('my_group');
 ```
 
 ### Error Handling
@@ -240,47 +202,31 @@ $cleared_count = Task_Scheduler::clear_group_tasks('my_group');
 The library uses WordPress's WP_Error system for error handling:
 
 ```php
-$result = Task_Scheduler::add_task('invalid_hook', -1);
+$scheduler = Task_Scheduler::get_instance('myplugin_', 'myplugin_default', 'MyPlugin');
+$result = $scheduler->add_task('invalid_hook', -1);
 
 if (is_wp_error($result)) {
     $error_code = $result->get_error_code();
     $error_message = $result->get_error_message();
-
-    switch ($error_code) {
-        case 'action_scheduler_not_available':
-            // Action Scheduler not available.
-            break;
-        case 'invalid_hook':
-            // Invalid hook name.
-            break;
-        case 'invalid_delay':
-            // Invalid delay value.
-            break;
-        default:
-            // Handle other errors.
-            break;
-    }
+    // Handle error appropriately.
 }
 ```
 
 ## API Reference
 
-### Configuration Methods
+### Factory Method
 
-- `configure(string $hook_prefix, string $default_group, string $log_prefix)`: Configure the scheduler
+- `get_instance(string $hook_prefix, string $default_group, string $log_prefix)`: Get or create a configured instance
+
+### Instance Methods
+
 - `get_hook_prefix()`: Get current hook prefix
 - `get_default_group()`: Get current default group
 - `get_log_prefix()`: Get current log prefix
-
-### Task Scheduling Methods
-
 - `add_task(string $hook, int $delay, array $args, string $group, int|null $priority, string $unique)`: Add one-time task
 - `add_repeating_task(string $hook, int $interval, array $args, int $delay, string $group, int|null $priority, int|null $max_runs, string $unique)`: Add recurring task
 - `add_unique_task(string $hook, int $delay, array $args, string $group, int|null $priority, string $unique)`: Add unique one-time task
 - `add_unique_repeating_task(string $hook, int $interval, array $args, int $delay, string $group, int|null $priority, int|null $max_runs, string $unique)`: Add unique recurring task
-
-### Task Management Methods
-
 - `cancel_task(int $action_id)`: Cancel a scheduled task
 - `get_task_status(int $action_id)`: Get task status
 - `get_tasks_by_group(string $group, string $status, int $limit)`: Get tasks by group
@@ -290,10 +236,12 @@ if (is_wp_error($result)) {
 - `has_scheduled_recurring_task(string $hook, string $group, string $status)`: Check if a recurring task exists
 - `get_task_count(string $hook, array $args, string $group, string $status)`: Get count of tasks
 - `clear_group_tasks(string $group)`: Clear all tasks in a group
+- `delete_task(int $action_id)`: Delete a specific task
 
-### Utility Methods
+### Static Utility Methods
 
 - `is_available()`: Check if Action Scheduler is available
+- `get_initialization_status()`: Get detailed initialization status
 
 ## Uniqueness Levels
 
@@ -324,17 +272,19 @@ By default, the library uses `UNIQUE_NONE`, which means:
 ### Example Use Cases
 
 ```php
+$scheduler = Task_Scheduler::get_instance('myplugin_', 'myplugin_default', 'MyPlugin');
+
 // Allow multiple identical tasks (default)
-Task_Scheduler::add_task('log_event', 0, ['event' => 'user_login']);
+$scheduler->add_task('log_event', 0, ['event' => 'user_login']);
 
 // Only one global maintenance task
-Task_Scheduler::add_task('system_maintenance', 0, [], 'maintenance', null, Task_Scheduler::UNIQUE_HOOK);
+$scheduler->add_task('system_maintenance', 0, [], 'maintenance', null, Task_Scheduler::UNIQUE_HOOK);
 
 // Only one backup per site
-Task_Scheduler::add_task('backup_site', 3600, ['site_id' => 123], 'site_123', null, Task_Scheduler::UNIQUE_GROUP);
+$scheduler->add_task('backup_site', 3600, ['site_id' => 123], 'site_123', null, Task_Scheduler::UNIQUE_GROUP);
 
 // Only one specific sync operation
-Task_Scheduler::add_task('sync_user', 0, ['user_id' => 456, 'type' => 'profile'], 'sync', null, Task_Scheduler::UNIQUE_ARGS);
+$scheduler->add_task('sync_user', 0, ['user_id' => 456, 'type' => 'profile'], 'sync', null, Task_Scheduler::UNIQUE_ARGS);
 ```
 
 When a duplicate task is detected, the existing task ID is returned instead of creating a new one. This prevents:
@@ -357,13 +307,14 @@ Common error codes returned by the library:
 
 ## Best Practices
 
-1. **Always check for errors**: Use `is_wp_error()` to check return values
-2. **Use meaningful hook names**: Make hook names descriptive and unique
-3. **Group related tasks**: Use groups to organize and manage related tasks
-4. **Choose appropriate uniqueness level**: Use UNIQUE_NONE for logging/monitoring, UNIQUE_ARGS for critical tasks
-5. **Monitor task execution**: Use the query methods to monitor task status
-6. **Clean up old tasks**: Regularly clear completed or failed tasks
-7. **Use array arguments**: Pass arguments as arrays for future-proof callback functions
+1. **Get instance once**: Store the scheduler instance in a class property or helper function to avoid repeated calls
+2. **Always check for errors**: Use `is_wp_error()` to check return values
+3. **Use meaningful hook names**: Make hook names descriptive and unique
+4. **Group related tasks**: Use groups to organize and manage related tasks
+5. **Choose appropriate uniqueness level**: Use UNIQUE_NONE for logging/monitoring, UNIQUE_ARGS for critical tasks
+6. **Monitor task execution**: Use the query methods to monitor task status
+7. **Clean up old tasks**: Regularly clear completed or failed tasks
+8. **Use array arguments**: Pass arguments as arrays for future-proof callback functions
 
 ## Contributing
 
