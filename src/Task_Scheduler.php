@@ -33,36 +33,73 @@ class Task_Scheduler {
 	const UNIQUE_ARGS  = 'args';
 
 	/**
-	 * Hook prefix for action scheduler actions.
+	 * Registry of configured instances keyed by configuration hash.
 	 *
-	 * @since 1.0.0
-	 * @var string
+	 * @since 2.0.0
+	 * @var array<string, Task_Scheduler>
 	 */
-	private static string $hook_prefix = 'queue_';
+	private static array $instances = [];
 
 	/**
-	 * Default group for actions.
+	 * Registry of known prefixes that have been configured.
+	 * Used to safely strip prefixes without guessing.
 	 *
-	 * @since 1.0.0
-	 * @var string
+	 * @since 2.0.0
+	 * @var array<string>
 	 */
-	private static string $default_group = 'queue_default';
+	private static array $known_prefixes = [ 'queue_' ];
 
 	/**
-	 * Log prefix for error logging.
+	 * Instance-specific hook prefix.
 	 *
-	 * @since 1.0.0
+	 * @since 2.0.0
 	 * @var string
 	 */
-	private static string $log_prefix = 'Queue';
+	private string $hook_prefix;
 
 	/**
-	 * Initialization status.
+	 * Instance-specific default group.
+	 *
+	 * @since 2.0.0
+	 * @var string
+	 */
+	private string $default_group;
+
+	/**
+	 * Instance-specific log prefix.
+	 *
+	 * @since 2.0.0
+	 * @var string
+	 */
+	private string $log_prefix;
+
+	/**
+	 * Initialization status (shared across all instances).
 	 *
 	 * @since 1.0.0
 	 * @var bool|null
 	 */
 	private static ?bool $initialized = null;
+
+	/**
+	 * Constructor.
+	 *
+	 * @since 2.0.0
+	 *
+	 * @param string $hook_prefix  Hook prefix for actions.
+	 * @param string $default_group Default group for actions.
+	 * @param string $log_prefix    Log prefix for error logging.
+	 */
+	private function __construct( string $hook_prefix, string $default_group, string $log_prefix ) {
+		$this->hook_prefix   = sanitize_key( $hook_prefix );
+		$this->default_group = sanitize_key( $default_group );
+		$this->log_prefix    = sanitize_text_field( $log_prefix );
+
+		// Register this prefix as a known prefix.
+		if ( ! in_array( $this->hook_prefix, self::$known_prefixes, true ) ) {
+			self::$known_prefixes[] = $this->hook_prefix;
+		}
+	}
 
 	/**
 	 * Initialize Action Scheduler if not already done.
@@ -249,57 +286,95 @@ class Task_Scheduler {
 	}
 
 	/**
+	 * Get or create a Task_Scheduler instance with the specified configuration.
+	 *
+	 * Instances are cached by configuration, so calling this method multiple times
+	 * with the same parameters returns the same instance.
+	 *
+	 * @since 2.0.0
+	 *
+	 * @param string $hook_prefix  Hook prefix for actions (default: 'queue_').
+	 * @param string $default_group Default group for actions (default: 'queue_default').
+	 * @param string $log_prefix    Log prefix for error logging (default: 'Queue').
+	 * @return Task_Scheduler Configured instance.
+	 */
+	public static function get_instance( string $hook_prefix = 'queue_', string $default_group = 'queue_default', string $log_prefix = 'Queue' ): self {
+		$sanitized_prefix = sanitize_key( $hook_prefix );
+		$sanitized_group  = sanitize_key( $default_group );
+		$sanitized_log    = sanitize_text_field( $log_prefix );
+
+		// Create a unique key for this configuration.
+		$key = md5( $sanitized_prefix . '|' . $sanitized_group . '|' . $sanitized_log );
+
+		// Return cached instance if it exists.
+		if ( isset( self::$instances[ $key ] ) ) {
+			return self::$instances[ $key ];
+		}
+
+		// Create and cache new instance.
+		self::$instances[ $key ] = new self( $sanitized_prefix, $sanitized_group, $sanitized_log );
+
+		return self::$instances[ $key ];
+	}
+
+	/**
 	 * Configure the Task_Scheduler class.
 	 *
+	 * @deprecated 2.0.0 Use get_instance() instead. This method is kept for backward compatibility but will be removed in a future version.
 	 * @since 1.0.0
 	 *
 	 * @param string $hook_prefix  Hook prefix for actions (default: 'queue_').
 	 * @param string $default_group Default group for actions (default: 'queue_default').
 	 * @param string $log_prefix    Log prefix for error logging (default: 'Queue').
+	 * @return Task_Scheduler Instance for method chaining.
 	 */
-	public static function configure( string $hook_prefix = 'queue_', string $default_group = 'queue_default', string $log_prefix = 'Queue' ): void {
-		self::$hook_prefix   = sanitize_key( $hook_prefix );
-		self::$default_group = sanitize_key( $default_group );
-		self::$log_prefix    = sanitize_text_field( $log_prefix );
+	public static function configure( string $hook_prefix = 'queue_', string $default_group = 'queue_default', string $log_prefix = 'Queue' ): self {
+		_doing_it_wrong(
+			__METHOD__,
+			'Task_Scheduler::configure() is deprecated. Use Task_Scheduler::get_instance() instead.',
+			'2.0.0'
+		);
+
+		return self::get_instance( $hook_prefix, $default_group, $log_prefix );
 	}
 
 	/**
 	 * Get the current hook prefix.
 	 *
-	 * @since 1.0.0
+	 * @since 2.0.0
 	 *
 	 * @return string Current hook prefix.
 	 */
-	public static function get_hook_prefix(): string {
-		return self::$hook_prefix;
+	public function get_hook_prefix(): string {
+		return $this->hook_prefix;
 	}
 
 	/**
 	 * Get the current default group.
 	 *
-	 * @since 1.0.0
+	 * @since 2.0.0
 	 *
 	 * @return string Current default group.
 	 */
-	public static function get_default_group(): string {
-		return self::$default_group;
+	public function get_default_group(): string {
+		return $this->default_group;
 	}
 
 	/**
 	 * Get the current log prefix.
 	 *
-	 * @since 1.0.0
+	 * @since 2.0.0
 	 *
 	 * @return string Current log prefix.
 	 */
-	public static function get_log_prefix(): string {
-		return self::$log_prefix;
+	public function get_log_prefix(): string {
+		return $this->log_prefix;
 	}
 
 	/**
 	 * Add a non-repeating task to the queue.
 	 *
-	 * @since 1.0.0
+	 * @since 2.0.0
 	 *
 	 * @param string   $hook     Action hook name (without prefix).
 	 * @param int      $delay    Delay in seconds before execution (default: 0).
@@ -309,7 +384,7 @@ class Task_Scheduler {
 	 * @param string   $unique   Uniqueness level (default: UNIQUE_NONE).
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	public static function add_task( string $hook, int $delay = 0, array $args = [], string $group = '', ?int $priority = null, string $unique = self::UNIQUE_NONE ) {
+	public function add_task( string $hook, int $delay = 0, array $args = [], string $group = '', ?int $priority = null, string $unique = self::UNIQUE_NONE ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
@@ -318,10 +393,10 @@ class Task_Scheduler {
 
 		// If no uniqueness check is requested, schedule directly.
 		if ( self::UNIQUE_NONE === $unique ) {
-			return self::schedule_single_action( $hook, $delay, $args, $group, $priority );
+			return $this->schedule_single_action( $hook, $delay, $args, $group, $priority );
 		}
 
-		return self::add_unique_task( $hook, $delay, $args, $group, $priority, $unique );
+		return $this->add_unique_task( $hook, $delay, $args, $group, $priority, $unique );
 	}
 
 	/**
@@ -339,7 +414,7 @@ class Task_Scheduler {
 	 * @param string   $unique      Uniqueness level (default: UNIQUE_NONE).
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	public static function add_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
+	public function add_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
@@ -353,10 +428,10 @@ class Task_Scheduler {
 
 		// If no uniqueness check is requested, schedule directly.
 		if ( self::UNIQUE_NONE === $unique ) {
-			return self::schedule_recurring_action( $hook, $interval, $args, $delay, $group, $priority, $max_runs );
+			return $this->schedule_recurring_action( $hook, $interval, $args, $delay, $group, $priority, $max_runs );
 		}
 
-		return self::add_unique_repeating_task( $hook, $interval, $args, $delay, $group, $priority, $max_runs, $unique );
+		return $this->add_unique_repeating_task( $hook, $interval, $args, $delay, $group, $priority, $max_runs, $unique );
 	}
 
 	/**
@@ -372,19 +447,19 @@ class Task_Scheduler {
 	 * @param string   $unique   Uniqueness level (default: UNIQUE_NONE).
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	public static function add_unique_task( string $hook, int $delay = 0, array $args = [], string $group = '', ?int $priority = null, string $unique = self::UNIQUE_NONE ) {
+	public function add_unique_task( string $hook, int $delay = 0, array $args = [], string $group = '', ?int $priority = null, string $unique = self::UNIQUE_NONE ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
 		}
 
-		$validation_result = self::validate_common_params( $hook, $delay );
+		$validation_result = $this->validate_common_params( $hook, $delay );
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
 		}
 
-		$processed_params = self::process_common_params( $hook, $delay, $group );
+		$processed_params = $this->process_common_params( $hook, $delay, $group );
 		if ( is_wp_error( $processed_params ) ) {
 			return $processed_params;
 		}
@@ -393,7 +468,7 @@ class Task_Scheduler {
 		$execution_time = $processed_params['execution_time'];
 		$group          = $processed_params['group'];
 
-		return self::execute_with_uniqueness_check(
+		return $this->execute_with_uniqueness_check(
 			$full_hook,
 			$args,
 			$group,
@@ -421,7 +496,7 @@ class Task_Scheduler {
 	 * @param string   $unique      Uniqueness level (default: UNIQUE_NONE).
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	public static function add_unique_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
+	public function add_unique_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
@@ -433,12 +508,12 @@ class Task_Scheduler {
 			return new WP_Error( 'invalid_interval', 'Interval must be greater than 0.' );
 		}
 
-		$validation_result = self::validate_common_params( $hook, $delay );
+		$validation_result = $this->validate_common_params( $hook, $delay );
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
 		}
 
-		$processed_params = self::process_common_params( $hook, $delay, $group );
+		$processed_params = $this->process_common_params( $hook, $delay, $group );
 		if ( is_wp_error( $processed_params ) ) {
 			return $processed_params;
 		}
@@ -447,7 +522,7 @@ class Task_Scheduler {
 		$execution_time = $processed_params['execution_time'];
 		$group          = $processed_params['group'];
 
-		return self::execute_with_uniqueness_check(
+		return $this->execute_with_uniqueness_check(
 			$full_hook,
 			$args,
 			$group,
@@ -468,14 +543,14 @@ class Task_Scheduler {
 	 * @param int $action_id Action ID to cancel.
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
-	public static function cancel_task( int $action_id ) {
+	public function cancel_task( int $action_id ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
 		}
 
-		return self::execute_with_error_handling(
+		return $this->execute_with_error_handling(
 			function () use ( $action_id ) {
 				$cancelled = as_unschedule_action( $action_id );
 
@@ -498,14 +573,14 @@ class Task_Scheduler {
 	 * @param int $action_id Action ID.
 	 * @return string|WP_Error Task status or WP_Error on failure.
 	 */
-	public static function get_task_status( int $action_id ) {
+	public function get_task_status( int $action_id ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
 		}
 
-		return self::execute_with_error_handling(
+		return $this->execute_with_error_handling(
 			function () use ( $action_id ) {
 				$store  = \ActionScheduler::store();
 				$status = $store->get_status( $action_id );
@@ -531,7 +606,7 @@ class Task_Scheduler {
 	 * @param int    $limit  Maximum number of tasks to return (default: 50).
 	 * @return array|WP_Error Array of tasks or WP_Error on failure.
 	 */
-	public static function get_tasks_by_group( string $group, string $status = 'pending', int $limit = 50 ) {
+	public function get_tasks_by_group( string $group, string $status = 'pending', int $limit = 50 ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
@@ -541,7 +616,7 @@ class Task_Scheduler {
 		// Sanitize group name.
 		$group = sanitize_key( $group );
 
-		return self::execute_with_error_handling(
+		return $this->execute_with_error_handling(
 			function () use ( $group, $status, $limit ) {
 				$args = [
 					'group'    => $group,
@@ -578,7 +653,7 @@ class Task_Scheduler {
 	 * @param string $group Action group.
 	 * @return int|WP_Error Number of tasks cleared or WP_Error on failure.
 	 */
-	public static function clear_group_tasks( string $group ) {
+	public function clear_group_tasks( string $group ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
@@ -588,7 +663,7 @@ class Task_Scheduler {
 		// Sanitize group name.
 		$group = sanitize_key( $group );
 
-		return self::execute_with_error_handling(
+		return $this->execute_with_error_handling(
 			function () use ( $group ) {
 				$args = [
 					'group'  => $group,
@@ -621,14 +696,14 @@ class Task_Scheduler {
 	 * @param string $group Action group (optional).
 	 * @return array|false Task data if found, false otherwise.
 	 */
-	public static function get_task_by_hook_and_args( string $hook, array $args, string $group = '' ) {
+	public function get_task_by_hook_and_args( string $hook, array $args, string $group = '' ) {
 		// Check if Action Scheduler is available.
 		if ( ! self::ensure_action_scheduler_ready() ) {
 			return false;
 		}
 
 		// Add prefix to hook if not already present.
-		$full_hook = self::ensure_hook_prefix( $hook );
+		$full_hook = $this->ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
@@ -655,7 +730,7 @@ class Task_Scheduler {
 			return false;
 		} catch ( Exception $e ) {
 			// Log the error for debugging.
-			error_log( self::$log_prefix . ': Error getting task by hook and args: ' . $e->getMessage() );
+			error_log( $this->log_prefix . ': Error getting task by hook and args: ' . $e->getMessage() );
 			return false;
 		}
 	}
@@ -729,7 +804,7 @@ class Task_Scheduler {
 	 * @param string $status Task status filter (default: 'pending').
 	 * @return array|WP_Error Array of tasks or WP_Error on failure.
 	 */
-	public static function get_tasks_by_args( string $hook, array $args, string $group = '', string $status = 'pending' ) {
+	public function get_tasks_by_args( string $hook, array $args, string $group = '', string $status = 'pending' ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
@@ -740,12 +815,12 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = self::ensure_hook_prefix( $hook );
+		$full_hook = $this->ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
 
-		return self::execute_with_error_handling(
+		return $this->execute_with_error_handling(
 			function () use ( $full_hook, $args, $group, $status ) {
 				$query_args = [
 					'hook'   => $full_hook,
@@ -789,7 +864,7 @@ class Task_Scheduler {
 	 * @param string $status Task status filter (default: 'pending').
 	 * @return bool True if task exists, false otherwise.
 	 */
-	public static function has_scheduled_task( string $hook, string $group = '', string $status = 'pending' ): bool {
+	public function has_scheduled_task( string $hook, string $group = '', string $status = 'pending' ): bool {
 		// Check if Action Scheduler is available.
 		if ( ! self::ensure_action_scheduler_ready() ) {
 			return false;
@@ -799,7 +874,7 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = self::ensure_hook_prefix( $hook );
+		$full_hook = $this->ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
@@ -820,7 +895,7 @@ class Task_Scheduler {
 			return ! empty( $actions );
 		} catch ( Exception $e ) {
 			// Log the error for debugging.
-			error_log( self::$log_prefix . ': Error checking scheduled task: ' . $e->getMessage() );
+			error_log( $this->log_prefix . ': Error checking scheduled task: ' . $e->getMessage() );
 			return false;
 		}
 	}
@@ -835,7 +910,7 @@ class Task_Scheduler {
 	 * @param string $status Task status filter (default: 'pending').
 	 * @return bool True if recurring task exists, false otherwise.
 	 */
-	public static function has_scheduled_recurring_task( string $hook, string $group = '', string $status = 'pending' ): bool {
+	public function has_scheduled_recurring_task( string $hook, string $group = '', string $status = 'pending' ): bool {
 		// Check if Action Scheduler is available.
 		if ( ! self::ensure_action_scheduler_ready() ) {
 			return false;
@@ -845,7 +920,7 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = self::ensure_hook_prefix( $hook );
+		$full_hook = $this->ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
@@ -906,7 +981,7 @@ class Task_Scheduler {
 							}
 						} catch ( Exception $e ) {
 							// Log the error for debugging.
-							error_log( self::$log_prefix . ': Error fetching action ' . $action_id . ': ' . $e->getMessage() );
+							error_log( $this->log_prefix . ': Error fetching action ' . $action_id . ': ' . $e->getMessage() );
 						}
 					}
 				}
@@ -915,7 +990,7 @@ class Task_Scheduler {
 			return false;
 		} catch ( Exception $e ) {
 			// Log the error for debugging.
-			error_log( self::$log_prefix . ': Error checking scheduled recurring task: ' . $e->getMessage() );
+			error_log( $this->log_prefix . ': Error checking scheduled recurring task: ' . $e->getMessage() );
 			return false;
 		}
 	}
@@ -930,7 +1005,7 @@ class Task_Scheduler {
 	 * @param string $status Task status filter (default: 'pending').
 	 * @return array|WP_Error Array of tasks or WP_Error on failure.
 	 */
-	public static function get_tasks_by_hook( string $hook, string $group = '', string $status = 'pending' ) {
+	public function get_tasks_by_hook( string $hook, string $group = '', string $status = 'pending' ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
@@ -941,12 +1016,12 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = self::ensure_hook_prefix( $hook );
+		$full_hook = $this->ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
 
-		return self::execute_with_error_handling(
+		return $this->execute_with_error_handling(
 			function () use ( $full_hook, $group, $status ) {
 				$query_args = [
 					'hook'   => $full_hook,
@@ -1009,14 +1084,14 @@ class Task_Scheduler {
 	 * @param int $action_id Action ID to delete.
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
-	public static function delete_task( int $action_id ) {
+	public function delete_task( int $action_id ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
 		}
 
-		return self::execute_with_error_handling(
+		return $this->execute_with_error_handling(
 			function () use ( $action_id ) {
 				$deleted = as_unschedule_action( $action_id );
 
@@ -1042,7 +1117,7 @@ class Task_Scheduler {
 	 * @param string $status Task status filter (default: 'pending').
 	 * @return int Number of tasks matching the criteria.
 	 */
-	public static function get_task_count( string $hook, array $args = [], string $group = '', string $status = 'pending' ): int {
+	public function get_task_count( string $hook, array $args = [], string $group = '', string $status = 'pending' ): int {
 		// Check if Action Scheduler is available.
 		if ( ! self::ensure_action_scheduler_ready() ) {
 			return 0;
@@ -1052,7 +1127,7 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = self::ensure_hook_prefix( $hook );
+		$full_hook = $this->ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
@@ -1074,7 +1149,7 @@ class Task_Scheduler {
 			return count( $actions );
 		} catch ( Exception $e ) {
 			// Log the error for debugging.
-			error_log( self::$log_prefix . ': Error getting task count: ' . $e->getMessage() );
+			error_log( $this->log_prefix . ': Error getting task count: ' . $e->getMessage() );
 			return 0;
 		}
 	}
@@ -1082,27 +1157,34 @@ class Task_Scheduler {
 	/**
 	 * Ensure hook has prefix, adding it only if not already present.
 	 *
-	 * @since 1.0.0
+	 * @since 2.0.0
 	 *
 	 * @param string $hook Hook name (may or may not have prefix).
 	 * @return string Hook with prefix.
 	 */
-	private static function ensure_hook_prefix( string $hook ): string {
+	private function ensure_hook_prefix( string $hook ): string {
 		// If hook is empty or prefix is empty, return hook as-is.
-		if ( empty( $hook ) || empty( self::$hook_prefix ) ) {
+		if ( empty( $hook ) || empty( $this->hook_prefix ) ) {
 			return $hook;
 		}
 
-		$prefix_length = strlen( self::$hook_prefix );
-
-		// Strip all occurrences of the current prefix from the beginning.
-		// This handles cases where the hook has been prefixed multiple times.
-		while ( strpos( $hook, self::$hook_prefix ) === 0 ) {
-			$hook = substr( $hook, $prefix_length );
-		}
+		// Strip all known prefixes from the beginning of the hook.
+		// This handles cases where hooks have been prefixed by other plugins or multiple times.
+		$stripped = false;
+		do {
+			$stripped = false;
+			foreach ( self::$known_prefixes as $known_prefix ) {
+				if ( ! empty( $known_prefix ) && strpos( $hook, $known_prefix ) === 0 ) {
+					$hook     = substr( $hook, strlen( $known_prefix ) );
+					$stripped = true;
+					// Break to restart checking from the beginning after stripping.
+					break;
+				}
+			}
+		} while ( $stripped );
 
 		// Add the current prefix once.
-		return self::$hook_prefix . $hook;
+		return $this->hook_prefix . $hook;
 	}
 
 	/**
@@ -1114,7 +1196,7 @@ class Task_Scheduler {
 	 * @param int    $delay Delay in seconds.
 	 * @return true|WP_Error True on success, WP_Error on failure.
 	 */
-	private static function validate_common_params( string $hook, int $delay ) {
+	private function validate_common_params( string $hook, int $delay ) {
 		// Validate hook name.
 		if ( empty( $hook ) ) {
 			return new WP_Error( 'invalid_hook', 'Hook name cannot be empty.' );
@@ -1138,15 +1220,15 @@ class Task_Scheduler {
 	 * @param string $group Action group.
 	 * @return array|WP_Error Processed parameters on success, WP_Error on failure.
 	 */
-	private static function process_common_params( string $hook, int $delay, string $group ) {
+	private function process_common_params( string $hook, int $delay, string $group ) {
 		// Sanitize hook name.
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = self::ensure_hook_prefix( $hook );
+		$full_hook = $this->ensure_hook_prefix( $hook );
 
 		// Use default group if not specified.
-		$group = ! empty( $group ) ? sanitize_key( $group ) : self::$default_group;
+		$group = ! empty( $group ) ? sanitize_key( $group ) : $this->default_group;
 
 		// Calculate execution time.
 		$execution_time = $delay > 0 ? time() + $delay : time();
@@ -1174,8 +1256,8 @@ class Task_Scheduler {
 	 * @param string   $unique         Uniqueness level.
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	private static function execute_with_uniqueness_check( string $full_hook, array $args, string $group, int $execution_time, ?int $priority, string $type, ?int $interval = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
-		return self::execute_with_error_handling(
+	private function execute_with_uniqueness_check( string $full_hook, array $args, string $group, int $execution_time, ?int $priority, string $type, ?int $interval = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
+		return $this->execute_with_error_handling(
 			function () use ( $full_hook, $args, $group, $execution_time, $priority, $type, $interval, $max_runs, $unique ) {
 				// Build query based on uniqueness level.
 				$query_args = [
@@ -1221,8 +1303,8 @@ class Task_Scheduler {
 				if ( ! empty( $matching_actions ) ) {
 					$existing_id     = $matching_actions[0];
 					$action_type     = 'recurring' === $type ? 'recurring action' : 'action';
-					$uniqueness_desc = self::get_uniqueness_description( $unique, $full_hook, $group, $args );
-					error_log( sprintf( self::$log_prefix . ': Duplicate %s detected (%s). Returning existing action ID: %d', $action_type, $uniqueness_desc, $existing_id ) );
+					$uniqueness_desc = $this->get_uniqueness_description( $unique, $full_hook, $group, $args );
+					error_log( sprintf( $this->log_prefix . ': Duplicate %s detected (%s). Returning existing action ID: %d', $action_type, $uniqueness_desc, $existing_id ) );
 					return $existing_id;
 				}
 
@@ -1257,13 +1339,13 @@ class Task_Scheduler {
 	 * @param int|null $priority Priority of the action.
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	private static function schedule_single_action( string $hook, int $delay, array $args, string $group, ?int $priority ) {
-		$validation_result = self::validate_common_params( $hook, $delay );
+	private function schedule_single_action( string $hook, int $delay, array $args, string $group, ?int $priority ) {
+		$validation_result = $this->validate_common_params( $hook, $delay );
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
 		}
 
-		$processed_params = self::process_common_params( $hook, $delay, $group );
+		$processed_params = $this->process_common_params( $hook, $delay, $group );
 		if ( is_wp_error( $processed_params ) ) {
 			return $processed_params;
 		}
@@ -1272,7 +1354,7 @@ class Task_Scheduler {
 		$execution_time = $processed_params['execution_time'];
 		$group          = $processed_params['group'];
 
-		return self::execute_with_error_handling(
+		return $this->execute_with_error_handling(
 			function () use ( $full_hook, $args, $group, $execution_time, $priority ) {
 				$action_id = as_schedule_single_action( $execution_time, $full_hook, [ 'task_args' => $args ], $group, false, $priority ?? 10 );
 
@@ -1301,13 +1383,13 @@ class Task_Scheduler {
 	 * @param int|null $max_runs    Maximum number of runs.
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	private static function schedule_recurring_action( string $hook, int $interval, array $args, int $delay, string $group, ?int $priority, ?int $max_runs ) {
-		$validation_result = self::validate_common_params( $hook, $delay );
+	private function schedule_recurring_action( string $hook, int $interval, array $args, int $delay, string $group, ?int $priority, ?int $max_runs ) {
+		$validation_result = $this->validate_common_params( $hook, $delay );
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
 		}
 
-		$processed_params = self::process_common_params( $hook, $delay, $group );
+		$processed_params = $this->process_common_params( $hook, $delay, $group );
 		if ( is_wp_error( $processed_params ) ) {
 			return $processed_params;
 		}
@@ -1316,7 +1398,7 @@ class Task_Scheduler {
 		$execution_time = $processed_params['execution_time'];
 		$group          = $processed_params['group'];
 
-		return self::execute_with_error_handling(
+		return $this->execute_with_error_handling(
 			function () use ( $full_hook, $args, $group, $execution_time, $priority, $interval, $max_runs ) {
 				$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, [ 'task_args' => $args ], $group, $max_runs, $priority ?? 10 );
 
@@ -1342,7 +1424,7 @@ class Task_Scheduler {
 	 * @param array  $args       Action arguments.
 	 * @return string Description of uniqueness check.
 	 */
-	private static function get_uniqueness_description( string $unique, string $full_hook, string $group, array $args ): string {
+	private function get_uniqueness_description( string $unique, string $full_hook, string $group, array $args ): string {
 		switch ( $unique ) {
 			case self::UNIQUE_HOOK:
 				return sprintf( 'hook: %s', $full_hook );
@@ -1365,12 +1447,12 @@ class Task_Scheduler {
 	 * @param string   $error_message   Error message for WP_Error.
 	 * @return mixed Function result or WP_Error on failure.
 	 */
-	private static function execute_with_error_handling( callable $callback, string $log_message, string $error_message ) {
+	private function execute_with_error_handling( callable $callback, string $log_message, string $error_message ) {
 		try {
 			return $callback();
 		} catch ( Exception $e ) {
 			// Log the error for debugging.
-			error_log( self::$log_prefix . ': ' . $log_message . $e->getMessage() );
+			error_log( $this->log_prefix . ': ' . $log_message . $e->getMessage() );
 
 			return new WP_Error(
 				'queue_error',
