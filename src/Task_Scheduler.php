@@ -628,7 +628,7 @@ class Task_Scheduler {
 		}
 
 		// Add prefix to hook if not already present.
-		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+		$full_hook = self::ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
@@ -740,7 +740,7 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+		$full_hook = self::ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
@@ -799,7 +799,7 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+		$full_hook = self::ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
@@ -845,7 +845,7 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+		$full_hook = self::ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
@@ -941,7 +941,7 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+		$full_hook = self::ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
@@ -1052,7 +1052,7 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+		$full_hook = self::ensure_hook_prefix( $hook );
 
 		// Sanitize group name.
 		$group = sanitize_key( $group );
@@ -1077,6 +1077,32 @@ class Task_Scheduler {
 			error_log( self::$log_prefix . ': Error getting task count: ' . $e->getMessage() );
 			return 0;
 		}
+	}
+
+	/**
+	 * Ensure hook has prefix, adding it only if not already present.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $hook Hook name (may or may not have prefix).
+	 * @return string Hook with prefix.
+	 */
+	private static function ensure_hook_prefix( string $hook ): string {
+		// If hook is empty or prefix is empty, return hook as-is.
+		if ( empty( $hook ) || empty( self::$hook_prefix ) ) {
+			return $hook;
+		}
+
+		$prefix_length = strlen( self::$hook_prefix );
+
+		// Strip all occurrences of the current prefix from the beginning.
+		// This handles cases where the hook has been prefixed multiple times.
+		while ( strpos( $hook, self::$hook_prefix ) === 0 ) {
+			$hook = substr( $hook, $prefix_length );
+		}
+
+		// Add the current prefix once.
+		return self::$hook_prefix . $hook;
 	}
 
 	/**
@@ -1117,7 +1143,7 @@ class Task_Scheduler {
 		$hook = sanitize_key( $hook );
 
 		// Add prefix to hook if not already present.
-		$full_hook = strpos( $hook, self::$hook_prefix ) === 0 ? $hook : self::$hook_prefix . $hook;
+		$full_hook = self::ensure_hook_prefix( $hook );
 
 		// Use default group if not specified.
 		$group = ! empty( $group ) ? sanitize_key( $group ) : self::$default_group;
