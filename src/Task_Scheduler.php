@@ -1168,22 +1168,28 @@ class Task_Scheduler {
 			return $hook;
 		}
 
-		// Strip all known prefixes from the beginning of the hook.
-		// This handles cases where hooks have been prefixed by other plugins or multiple times.
-		$stripped = false;
-		do {
-			$stripped = false;
+		// If hook already starts with the current instance's prefix, check for double-prefixing.
+		if ( strpos( $hook, $this->hook_prefix ) === 0 ) {
+			// Check if there's a known prefix after the current prefix (double-prefixing case).
+			$hook_without_current_prefix = substr( $hook, strlen( $this->hook_prefix ) );
 			foreach ( self::$known_prefixes as $known_prefix ) {
-				if ( ! empty( $known_prefix ) && strpos( $hook, $known_prefix ) === 0 ) {
-					$hook     = substr( $hook, strlen( $known_prefix ) );
-					$stripped = true;
-					// Break to restart checking from the beginning after stripping.
-					break;
+				// Skip if this is the current instance's prefix.
+				if ( $known_prefix === $this->hook_prefix ) {
+					continue;
+				}
+				// If the hook (without current prefix) starts with another known prefix, strip it.
+				// This handles double-prefixing scenarios.
+				if ( ! empty( $known_prefix ) && strpos( $hook_without_current_prefix, $known_prefix ) === 0 ) {
+					return $this->hook_prefix . substr( $hook_without_current_prefix, strlen( $known_prefix ) );
 				}
 			}
-		} while ( $stripped );
+			// Already has current prefix and no double-prefixing, return as-is.
+			return $hook;
+		}
 
-		// Add the current prefix once.
+		// Hook doesn't have current prefix. Only strip known prefixes if hook already has current prefix.
+		// This prevents stripping prefixes that are part of the hook name itself.
+		// Add the current prefix to the hook as-is.
 		return $this->hook_prefix . $hook;
 	}
 
