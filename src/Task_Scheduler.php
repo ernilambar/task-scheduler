@@ -454,7 +454,6 @@ class Task_Scheduler {
 			$priority,
 			'single',
 			null,
-			null,
 			$unique
 		);
 	}
