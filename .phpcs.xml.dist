@@ -30,7 +30,7 @@
 	<arg name="parallel" value="8"/><!-- Enables parallel processing when available for faster results. -->
 
 	<!-- Minimum support WP Version. -->
-	<config name="minimum_wp_version" value="6.0"/>
+	<config name="minimum_wp_version" value="6.8"/>
 
 	<!-- Don't worry about files that don't contain any code -->
 	<rule ref="Internal.NoCodeFound">
@@ -46,7 +46,6 @@
 		<exclude name="Universal.Arrays.DisallowShortArraySyntax"/>
 		<exclude name="WordPress.DB.DirectDatabaseQuery"/>
 		<exclude name="WordPress.PHP.DevelopmentFunctions"/>
-		<exclude name="WordPress.WP.I18n.MissingTranslatorsComment"/>
 	</rule>
 
 	<!-- Enforce short arrays. -->
