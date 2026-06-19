@@ -318,27 +318,6 @@ class Task_Scheduler {
 	}
 
 	/**
-	 * Configure the Task_Scheduler class.
-	 *
-	 * @deprecated 2.0.0 Use get_instance() instead. This method is kept for backward compatibility but will be removed in a future version.
-	 * @since 1.0.0
-	 *
-	 * @param string $hook_prefix  Hook prefix for actions (default: 'queue_').
-	 * @param string $default_group Default group for actions (default: 'queue_default').
-	 * @param string $log_prefix    Log prefix for error logging (default: 'Queue').
-	 * @return Task_Scheduler Instance for method chaining.
-	 */
-	public static function configure( string $hook_prefix = 'queue_', string $default_group = 'queue_default', string $log_prefix = 'Queue' ): self {
-		_doing_it_wrong(
-			__METHOD__,
-			'Task_Scheduler::configure() is deprecated. Use Task_Scheduler::get_instance() instead.',
-			'2.0.0'
-		);
-
-		return self::get_instance( $hook_prefix, $default_group, $log_prefix );
-	}
-
-	/**
 	 * Get the current hook prefix.
 	 *
 	 * @since 2.0.0
@@ -410,11 +389,10 @@ class Task_Scheduler {
 	 * @param int      $delay       Initial delay in seconds (default: 0).
 	 * @param string   $group       Action group (default: configured default group).
 	 * @param int|null $priority    Priority of the action (default: null).
-	 * @param int|null $max_runs    Maximum number of runs (default: null for unlimited).
 	 * @param string   $unique      Uniqueness level (default: UNIQUE_NONE).
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	public function add_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
+	public function add_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, string $unique = self::UNIQUE_NONE ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
@@ -428,10 +406,10 @@ class Task_Scheduler {
 
 		// If no uniqueness check is requested, schedule directly.
 		if ( self::UNIQUE_NONE === $unique ) {
-			return $this->schedule_recurring_action( $hook, $interval, $args, $delay, $group, $priority, $max_runs );
+			return $this->schedule_recurring_action( $hook, $interval, $args, $delay, $group, $priority );
 		}
 
-		return $this->add_unique_repeating_task( $hook, $interval, $args, $delay, $group, $priority, $max_runs, $unique );
+		return $this->add_unique_repeating_task( $hook, $interval, $args, $delay, $group, $priority, $unique );
 	}
 
 	/**
@@ -492,11 +470,10 @@ class Task_Scheduler {
 	 * @param int      $delay       Initial delay in seconds (default: 0).
 	 * @param string   $group       Action group (default: configured default group).
 	 * @param int|null $priority    Priority of the action (default: null).
-	 * @param int|null $max_runs    Maximum number of runs (default: null for unlimited).
 	 * @param string   $unique      Uniqueness level (default: UNIQUE_NONE).
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	public function add_unique_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
+	public function add_unique_repeating_task( string $hook, int $interval, array $args = [], int $delay = 0, string $group = '', ?int $priority = null, string $unique = self::UNIQUE_NONE ) {
 		// Validate Action Scheduler availability.
 		$validation_result = self::validate_action_scheduler_available();
 		if ( is_wp_error( $validation_result ) ) {
@@ -530,7 +507,6 @@ class Task_Scheduler {
 			$priority,
 			'recurring',
 			$interval,
-			$max_runs,
 			$unique
 		);
 	}
@@ -907,10 +883,9 @@ class Task_Scheduler {
 	 *
 	 * @param string $hook Action hook name (without prefix).
 	 * @param string $group Action group (optional).
-	 * @param string $status Task status filter (default: 'pending').
 	 * @return bool True if recurring task exists, false otherwise.
 	 */
-	public function has_scheduled_recurring_task( string $hook, string $group = '', string $status = 'pending' ): bool {
+	public function has_scheduled_recurring_task( string $hook, string $group = '' ): bool {
 		// Check if Action Scheduler is available.
 		if ( ! self::ensure_action_scheduler_ready() ) {
 			return false;
@@ -1258,11 +1233,10 @@ class Task_Scheduler {
 	 * @param int|null $priority       Priority of the action.
 	 * @param string   $type           Action type ('single' or 'recurring').
 	 * @param int|null $interval       Interval for recurring actions.
-	 * @param int|null $max_runs       Maximum runs for recurring actions.
 	 * @param string   $unique         Uniqueness level.
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	private function execute_with_uniqueness_check( string $full_hook, array $args, string $group, int $execution_time, ?int $priority, string $type, ?int $interval = null, ?int $max_runs = null, string $unique = self::UNIQUE_NONE ) {
+	private function execute_with_uniqueness_check( string $full_hook, array $args, string $group, int $execution_time, ?int $priority, string $type, ?int $interval = null, string $unique = self::UNIQUE_NONE ) {
 		return $this->execute_with_error_handling(
 			function () use ( $full_hook, $args, $group, $execution_time, $priority, $type, $interval, $max_runs, $unique ) {
 				// Build query based on uniqueness level.
@@ -1386,10 +1360,9 @@ class Task_Scheduler {
 	 * @param int      $delay       Initial delay in seconds.
 	 * @param string   $group       Action group.
 	 * @param int|null $priority    Priority of the action.
-	 * @param int|null $max_runs    Maximum number of runs.
 	 * @return int|WP_Error Action ID on success, WP_Error on failure.
 	 */
-	private function schedule_recurring_action( string $hook, int $interval, array $args, int $delay, string $group, ?int $priority, ?int $max_runs ) {
+	private function schedule_recurring_action( string $hook, int $interval, array $args, int $delay, string $group, ?int $priority ) {
 		$validation_result = $this->validate_common_params( $hook, $delay );
 		if ( is_wp_error( $validation_result ) ) {
 			return $validation_result;
@@ -1405,8 +1378,8 @@ class Task_Scheduler {
 		$group          = $processed_params['group'];
 
 		return $this->execute_with_error_handling(
-			function () use ( $full_hook, $args, $group, $execution_time, $priority, $interval, $max_runs ) {
-				$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, [ 'task_args' => $args ], $group, $max_runs, $priority ?? 10 );
+			function () use ( $full_hook, $args, $group, $execution_time, $priority, $interval ) {
+				$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, [ 'task_args' => $args ], $group, false, $priority ?? 10 );
 
 				if ( 0 === $action_id ) {
 					return new WP_Error( 'schedule_failed', 'Failed to schedule recurring action.' );
