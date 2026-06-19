@@ -1238,32 +1238,28 @@ class Task_Scheduler {
 	 */
 	private function execute_with_uniqueness_check( string $full_hook, array $args, string $group, int $execution_time, ?int $priority, string $type, ?int $interval = null, string $unique = self::UNIQUE_NONE ) {
 		return $this->execute_with_error_handling(
-			function () use ( $full_hook, $args, $group, $execution_time, $priority, $type, $interval, $max_runs, $unique ) {
-				// Build query based on uniqueness level.
+			function () use ( $full_hook, $args, $group, $execution_time, $priority, $type, $interval, $unique ) {
+				// UNIQUE_ARGS: delegate to AS native $unique=true with backward-compat wrapper.
+				if ( self::UNIQUE_ARGS === $unique ) {
+					return $this->schedule_with_native_uniqueness( $full_hook, $args, $group, $execution_time, $priority, $type, $interval );
+				}
+
+				// UNIQUE_HOOK / UNIQUE_GROUP: manual pre-query (AS has no equivalent for these).
 				$query_args = [
 					'hook'   => $full_hook,
 					'status' => [ 'pending', 'in-progress' ],
 				];
 
-				// Add group filter for group and args uniqueness.
-				if ( in_array( $unique, [ self::UNIQUE_GROUP, self::UNIQUE_ARGS ], true ) ) {
+				if ( self::UNIQUE_GROUP === $unique ) {
 					$query_args['group'] = $group;
 				}
 
-				// Add args filter for args uniqueness only.
-				if ( self::UNIQUE_ARGS === $unique ) {
-					$query_args['args'] = [ 'task_args' => $args ];
-				}
-
-				// Check for existing actions based on uniqueness level.
 				$existing_actions = as_get_scheduled_actions( $query_args, ARRAY_A );
 
-				// Filter actions by type (recurring vs non-recurring) to avoid false duplicates.
 				$matching_actions = [];
 				foreach ( $existing_actions as $action_id => $action ) {
 					$is_recurring = false;
 
-					// Check if this action is recurring.
 					if ( isset( $action['schedule'] ) && is_object( $action['schedule'] ) ) {
 						$schedule_name = method_exists( $action['schedule'], 'get_name' ) ? $action['schedule']->get_name() : '';
 						if ( in_array( $schedule_name, [ 'recurring', 'cron' ], true ) ) {
@@ -1273,13 +1269,11 @@ class Task_Scheduler {
 						}
 					}
 
-					// Only consider actions of the same type (recurring vs non-recurring).
 					if ( ( 'recurring' === $type && $is_recurring ) || ( 'single' === $type && ! $is_recurring ) ) {
 						$matching_actions[] = $action_id;
 					}
 				}
 
-				// Return existing action ID if found.
 				if ( ! empty( $matching_actions ) ) {
 					$existing_id     = $matching_actions[0];
 					$action_type     = 'recurring' === $type ? 'recurring action' : 'action';
@@ -1288,7 +1282,6 @@ class Task_Scheduler {
 					return $existing_id;
 				}
 
-				// Schedule the action.
 				if ( 'recurring' === $type ) {
 					$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, [ 'task_args' => $args ], $group, false, $priority ?? 10 );
 				} else {
@@ -1305,6 +1298,82 @@ class Task_Scheduler {
 			sprintf( 'Error adding unique %s task to queue: ', $type ),
 			sprintf( 'Failed to add unique %s task to queue.', $type )
 		);
+	}
+
+	/**
+	 * Schedule using AS native $unique=true, preserving backward-compatible return value
+	 * and type discrimination between single and recurring actions.
+	 *
+	 * @since 2.1.0
+	 *
+	 * @param string   $full_hook      Full hook name with prefix.
+	 * @param array    $args           Arguments to pass to the action.
+	 * @param string   $group          Action group.
+	 * @param int      $execution_time Execution timestamp.
+	 * @param int|null $priority       Priority of the action.
+	 * @param string   $type           'single' or 'recurring'.
+	 * @param int|null $interval       Interval in seconds for recurring actions.
+	 * @return int|WP_Error Action ID on success, WP_Error on failure.
+	 */
+	private function schedule_with_native_uniqueness( string $full_hook, array $args, string $group, int $execution_time, ?int $priority, string $type, ?int $interval ) {
+		if ( 'recurring' === $type ) {
+			$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, [ 'task_args' => $args ], $group, true, $priority ?? 10 );
+		} else {
+			$action_id = as_schedule_single_action( $execution_time, $full_hook, [ 'task_args' => $args ], $group, true, $priority ?? 10 );
+		}
+
+		if ( $action_id > 0 ) {
+			return $action_id;
+		}
+
+		// AS returned 0: a duplicate exists with the same hook+args+group.
+		// Query to find it so we can (a) return its ID for backward compat and
+		// (b) check whether it is the same type — if not, AS blocked us incorrectly
+		// (type discrimination: a recurring should not block a single and vice versa).
+		$existing_actions = as_get_scheduled_actions(
+			[
+				'hook'   => $full_hook,
+				'args'   => [ 'task_args' => $args ],
+				'group'  => $group,
+				'status' => [ 'pending', 'in-progress' ],
+			],
+			ARRAY_A
+		);
+
+		foreach ( $existing_actions as $existing_id => $action ) {
+			$is_recurring = false;
+
+			if ( isset( $action['schedule'] ) && is_object( $action['schedule'] ) ) {
+				$schedule_name = method_exists( $action['schedule'], 'get_name' ) ? $action['schedule']->get_name() : '';
+				if ( in_array( $schedule_name, [ 'recurring', 'cron' ], true ) ) {
+					$is_recurring = true;
+				} elseif ( method_exists( $action['schedule'], 'get_interval' ) && $action['schedule']->get_interval() > 0 ) {
+					$is_recurring = true;
+				}
+			}
+
+			if ( ( 'recurring' === $type && $is_recurring ) || ( 'single' === $type && ! $is_recurring ) ) {
+				$action_type     = 'recurring' === $type ? 'recurring action' : 'action';
+				$uniqueness_desc = $this->get_uniqueness_description( self::UNIQUE_ARGS, $full_hook, $group, $args );
+				error_log( sprintf( $this->log_prefix . ': Duplicate %s detected (%s). Returning existing action ID: %d', $action_type, $uniqueness_desc, $existing_id ) );
+				return $existing_id;
+			}
+		}
+
+		// AS was blocked by a cross-type match (e.g. a recurring blocked a single).
+		// Schedule without the uniqueness flag to preserve type discrimination.
+		if ( 'recurring' === $type ) {
+			$action_id = as_schedule_recurring_action( $execution_time, $interval, $full_hook, [ 'task_args' => $args ], $group, false, $priority ?? 10 );
+		} else {
+			$action_id = as_schedule_single_action( $execution_time, $full_hook, [ 'task_args' => $args ], $group, false, $priority ?? 10 );
+		}
+
+		if ( 0 === $action_id ) {
+			$action_type = 'recurring' === $type ? 'recurring action' : 'action';
+			return new WP_Error( 'schedule_failed', sprintf( 'Failed to schedule %s.', $action_type ) );
+		}
+
+		return $action_id;
 	}
 
 	/**
