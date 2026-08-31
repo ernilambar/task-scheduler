@@ -33,10 +33,3 @@ A single-class PHP library (`src/Task_Scheduler.php`) that wraps [WooCommerce Ac
 **Error handling**: All public methods return `WP_Error` on failure (never throw exceptions).
 
 **Dependency**: Action Scheduler must be active (`is_available()` / `get_initialization_status()` check this at runtime).
-
-## Standards
-
-- PHP 7.4+ minimum, `declare(strict_types=1)` required
-- WordPress Coding Standards (WPCS) — tabs, not spaces
-- PHPCompatibility checked against PHP 7.4
-- Namespace: `Nilambar\Task_Scheduler`
