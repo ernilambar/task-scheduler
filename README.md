@@ -37,4 +37,4 @@ See [docs/GUIDE.md](docs/GUIDE.md) for full usage, API reference, uniqueness lev
 
 ## License
 
-[MIT](https://opensource.org/license/MIT)
+[GPL-3.0-or-later](https://spdx.org/licenses/GPL-3.0-or-later.html)

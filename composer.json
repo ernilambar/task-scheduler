@@ -1,7 +1,7 @@
 {
 	"name": "ernilambar/task-scheduler",
 	"description": "A WordPress task scheduling library built on top of Action Scheduler.",
-	"license": "MIT",
+	"license": "GPL-3.0-or-later",
 	"type": "library",
 	"authors": [
 		{
